@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- No third-party dependencies: signing, AES-GCM, HTTP and JSON all come from .NET's
+       built-in libraries. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>FluxaDemo</RootNamespace>
+    <AssemblyName>FluxaDemo</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <!-- Lets the test project reach internal members such as Webhook.DedupeKey directly, rather
+       than widening them into the public API purely for testability. -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="FluxaDemo.Tests" />
+  </ItemGroup>
+
+</Project>

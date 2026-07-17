@@ -1,0 +1,119 @@
+{
+  "_comment": "Generated from github.com/yldm/fluxa/pkg/{signature,cryptobox}. Do not hand-edit.",
+  "envelopes": [
+    {
+      "name": "payment_succeeded_encrypted",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "envelope": "{\"alg\":\"A256GCM\",\"data\":\"AAECAwQFBgcICQoLKDyHctkcPyO5T7uzhRYiJIT8F7z562HphhPt3g/kgex7fuqr2GMhiJ6ZtzQXR/9X7v3m3407XUipd740jYWAsvKb4uZCRRvv3hOt828YrJaTbzdLvlsFhj5br+WEdMXiIw4QLLhcSEpmyhSYZrX4L7Kp64lJOnIOXtclHoLaa7l+qTiWIONtXfItBeipbCJVYsHgxFvNKCL+SmDfoDi7BIo8\"}",
+      "plaintext": "{\"event\":\"payment.succeeded\",\"order_id\":\"ord_123\",\"merchant_order_id\":\"order-1\",\"amount\":\"9.99\",\"currency\":\"USD\",\"status\":\"paid\",\"channel\":\"mock\"}"
+    }
+  ],
+  "requests": [
+    {
+      "name": "post_charge_no_query",
+      "method": "POST",
+      "path": "/api/v1/charges",
+      "raw_query": "",
+      "timestamp": "1750000000",
+      "body": "{\"merchant_order_id\":\"order-1\",\"amount\":\"9.99\",\"currency\":\"USD\",\"channel\":\"mock\"}",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "POST\n/api/v1/charges\n\n1750000000\n74f74511aebc240a8791731bfa78b4d5968ddd941880c88e4d6f5752bd028a64",
+      "signature": "fbce91414009ef3082bf67da7dd3aee87d67fa5d4dcba566eac09e92c5830df4"
+    },
+    {
+      "name": "post_lowercase_method_normalized",
+      "method": "post",
+      "path": "/api/v1/charges",
+      "raw_query": "",
+      "timestamp": "1750000000",
+      "body": "{\"merchant_order_id\":\"order-1\",\"amount\":\"9.99\",\"currency\":\"USD\",\"channel\":\"mock\"}",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "POST\n/api/v1/charges\n\n1750000000\n74f74511aebc240a8791731bfa78b4d5968ddd941880c88e4d6f5752bd028a64",
+      "signature": "fbce91414009ef3082bf67da7dd3aee87d67fa5d4dcba566eac09e92c5830df4"
+    },
+    {
+      "name": "get_empty_body_no_query",
+      "method": "GET",
+      "path": "/api/v1/orders/ord_123",
+      "raw_query": "",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "GET\n/api/v1/orders/ord_123\n\n1750000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "86280caf5ae7f6842e05ed3a2f38b5cef541847c090a3d2afff7b0e18162eadf"
+    },
+    {
+      "name": "get_query_sorted",
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "raw_query": "limit=10\u0026status=paid",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "GET\n/api/v1/orders\nlimit=10\u0026status=paid\n1750000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "d37ea8487c6ceb4b8fc240e599676e5c16fe0ce00e8ec8f84a4b2cfe05f21611"
+    },
+    {
+      "name": "get_query_unsorted_same_sig",
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "raw_query": "status=paid\u0026limit=10",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "GET\n/api/v1/orders\nlimit=10\u0026status=paid\n1750000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "d37ea8487c6ceb4b8fc240e599676e5c16fe0ce00e8ec8f84a4b2cfe05f21611"
+    },
+    {
+      "name": "get_query_repeated_key",
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "raw_query": "z=1\u0026z=2\u0026a=3",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "GET\n/api/v1/orders\na=3\u0026z=1\u0026z=2\n1750000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "cb5b5b6ffcd9aa36af1feaeb5f7b9b4a646747c742c25506e57c0e19d84c63d2"
+    },
+    {
+      "name": "get_query_utf16_divergence",
+      "method": "GET",
+      "path": "/api/v1/orders",
+      "raw_query": "k=￿\u0026k=😀",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "GET\n/api/v1/orders\nk=￿\u0026k=😀\n1750000000\ne3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "signature": "8ce75843f0114c71df06118982b4da9e1af70742cd68ec78985462dd9b546ace"
+    },
+    {
+      "name": "post_unicode_body",
+      "method": "POST",
+      "path": "/api/v1/charges",
+      "raw_query": "",
+      "timestamp": "1750000000",
+      "body": "{\"subject\":\"咖啡 ☕\",\"amount\":\"1.00\",\"currency\":\"USD\",\"channel\":\"mock\"}",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "canonical": "POST\n/api/v1/charges\n\n1750000000\n4c77ff7269125d601310562488c21f46fa2b0345d71dc5c286f307e12e49c4cd",
+      "signature": "f116daa467208c750221c0b4f4e67cd548bf4579b95d1dc7452cabdcab1f1edc"
+    }
+  ],
+  "webhooks": [
+    {
+      "name": "payment_succeeded",
+      "timestamp": "1750000000",
+      "body": "{\"event\":\"payment.succeeded\",\"order_id\":\"ord_123\",\"merchant_order_id\":\"order-1\",\"amount\":\"9.99\",\"currency\":\"USD\",\"status\":\"paid\",\"channel\":\"mock\"}",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "signed_raw": "1750000000.{\"event\":\"payment.succeeded\",\"order_id\":\"ord_123\",\"merchant_order_id\":\"order-1\",\"amount\":\"9.99\",\"currency\":\"USD\",\"status\":\"paid\",\"channel\":\"mock\"}",
+      "signature": "ff045c7b75b768a07d8c9bbe31044355d578db386ac0df13795b74dadc78cd8c"
+    },
+    {
+      "name": "empty_body",
+      "timestamp": "1750000000",
+      "body": "",
+      "secret": "sk_test_demo_secret_do_not_use_in_prod",
+      "signed_raw": "1750000000.",
+      "signature": "a14c6e9a6d63fc3e3edd98c1396de9eaf606356a0aa236987ab78cdc1cadbb85"
+    }
+  ]
+}

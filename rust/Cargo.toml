@@ -1,0 +1,39 @@
+[package]
+name = "fluxa-demo"
+version = "0.1.0"
+edition = "2021"
+# ureq 3 requires 1.85+ and is the sole source of this MSRV; every other crate needs less.
+rust-version = "1.85"
+publish = false
+
+[lib]
+name = "fluxa"
+path = "src/lib.rs"
+
+# Dependencies are deliberately kept to a minimum. Rust's standard library ships neither
+# crypto nor HTTP, so this demo cannot be dependency-free the way the node/go ones are.
+# The rationale for each crate is in README.md, "Dependencies".
+[dependencies]
+# crypto — RustCrypto: pure Rust, no C dependencies
+hmac = "0.12"
+sha2 = "0.10"
+# default-features would pull in getrandom, which only the encrypting side needs; this demo
+# only decrypts, so it is turned off.
+aes-gcm = { version = "0.10", default-features = false, features = ["aes", "alloc"] }
+base64 = "0.22"
+hex = "0.4"
+# JSON
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# HTTP client (blocking)
+ureq = "3"
+# HTTP server for the webhook receiver (blocking)
+tiny_http = "0.12"
+
+[[bin]]
+name = "charge"
+path = "src/bin/charge.rs"
+
+[[bin]]
+name = "webhook"
+path = "src/bin/webhook.rs"

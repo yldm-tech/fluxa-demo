@@ -1,0 +1,18 @@
+{
+    "name": "fluxa/demo-php",
+    "description": "fluxa payment integration demo (PHP, dependency-free)",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.1",
+        "ext-openssl": "*",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "ext-hash": "*"
+    },
+    "scripts": {
+        "charge": "php src/charge.php",
+        "webhook": "php -S 0.0.0.0:9000 src/webhook.php",
+        "test": "php test/vectors_test.php"
+    }
+}

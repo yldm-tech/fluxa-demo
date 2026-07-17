@@ -1,0 +1,19 @@
+# Never commit real credentials — only .env.example is tracked.
+.env
+
+# Dependencies
+node_modules/
+.venv/
+venv/
+vendor/
+
+# Build output. These patterns are deliberately specific: a bare `bin/` would match a
+# directory named bin at ANY depth and swallow rust/src/bin/, which holds the Rust
+# binary entrypoints' SOURCE — a clone would be broken and the cause non-obvious.
+__pycache__/
+*.pyc
+java/target/
+*.class
+rust/target/
+dotnet/**/bin/
+dotnet/**/obj/

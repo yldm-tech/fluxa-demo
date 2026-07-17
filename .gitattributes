@@ -1,0 +1,12 @@
+# Normalize line endings so the signing demos behave identically on every platform.
+# This matters more than usual here: a stray CR in a .env value or a source file would
+# change bytes that get hashed.
+* text=auto eol=lf
+
+# Windows-native tooling still expects CRLF for these.
+*.sln text eol=crlf
+*.csproj text eol=crlf
+
+# Generated, not hand-written — collapse it in diffs.
+spec/vectors.json linguist-generated=true
+rust/Cargo.lock linguist-generated=true

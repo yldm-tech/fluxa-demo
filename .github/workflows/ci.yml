@@ -1,0 +1,221 @@
+# Verifies every language demo against spec/vectors.json — the known-answer vectors
+# generated from fluxa's real server-side signing code. No credentials and no running
+# server are needed: the vectors are a pure offline oracle.
+#
+# runs-on: this repo is PUBLIC, so it uses GitHub-hosted runners on purpose. Self-hosted
+# runners on a public repo would execute arbitrary code from any fork's pull request on
+# our own infrastructure — GitHub advises against it, and no job here needs anything a
+# hosted runner lacks.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - run: node --test "test/*.test.js"
+        working-directory: node
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.9" # the stated floor; the demo is stdlib-only
+      - run: python -m unittest discover -s test -v
+        working-directory: python
+      # The encrypted-envelope path needs `cryptography` (no AES in the stdlib). Without it
+      # that one vector SKIPS by design, so run once more with it installed to prove the
+      # path actually works rather than silently never running.
+      - run: pip install cryptography && python -m unittest discover -s test -v
+        working-directory: python
+
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.22"
+      - run: go vet ./...
+        working-directory: go
+      - run: go test ./...
+        working-directory: go
+
+  ruby:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3" # linked against OpenSSL, so the envelope vector runs
+      - run: ruby test/vectors_test.rb
+        working-directory: ruby
+
+  php:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: "8.1" # the stated floor
+          extensions: openssl, curl
+      - run: php test/vectors_test.php
+        working-directory: php
+
+  java:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+      - run: mvn -B test
+        working-directory: java
+
+  rust:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rust
+      - run: cargo test
+        working-directory: rust
+      - run: cargo clippy --all-targets -- -D warnings
+        working-directory: rust
+
+  dotnet:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "8.0"
+      - run: dotnet test --nologo
+        working-directory: dotnet
+
+  # Fails the build if a demo's signing could silently disagree with the server: drop the
+  # CANONICAL_QUERY line from the Node reference (the classic 4-line bug) and the vectors
+  # test MUST fail. A suite that stays green under that mutation is asserting nothing.
+  mutation-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: vectors test must fail on a 4-line canonical
+        working-directory: node
+        run: |
+          set -euo pipefail
+          cp src/fluxa.js /tmp/fluxa.js.bak
+          # Remove canonicalQuery from the joined canonical → 4 lines instead of 5.
+          perl -0pi -e 's/\[method\.toUpperCase\(\), path, canonicalQuery\(rawQuery\), timestamp, bodyHash\]/[method.toUpperCase(), path, timestamp, bodyHash]/' src/fluxa.js
+          if grep -q 'canonicalQuery(rawQuery), timestamp' src/fluxa.js; then
+            echo "mutation did not apply — the canonical() shape changed; update this check" >&2
+            exit 1
+          fi
+          if node --test "test/*.test.js" >/dev/null 2>&1; then
+            echo "FAIL: the suite passed with a 4-line canonical — it is not testing the signature" >&2
+            cp /tmp/fluxa.js.bak src/fluxa.js
+            exit 1
+          fi
+          cp /tmp/fluxa.js.bak src/fluxa.js
+          echo "OK: the mutation was caught"
+
+  # Guards this repo's public-ness. The fluxa platform repo is private, so a comment or
+  # doc line citing its internals — file paths, commit SHAs, queue mechanics — leaks
+  # architecture the moment it merges. Easy to reintroduce when copying an explanation
+  # across, hence a check rather than a convention.
+  #
+  # The file list comes from `find`, not grep's --exclude*: those flags are interpreted
+  # differently across grep implementations (they silently failed to exclude a nested
+  # path during development), and a guard that quietly matches the wrong set is worse
+  # than none. This workflow is excluded because it necessarily contains every string it
+  # searches for and would otherwise flag itself forever.
+  hygiene:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: build the audited file list
+        run: |
+          find . -type f \
+            -not -path './.git/*' -not -path '*/node_modules/*' -not -path '*/target/*' \
+            -not -path '*/obj/*' -not -path '*/bin/*' -not -path './.github/*' \
+            > /tmp/audited.txt
+          echo "auditing $(wc -l < /tmp/audited.txt) files"
+      - name: no private-repo references
+        run: |
+          set -uo pipefail
+          fail=0
+          # -F: fixed strings. A bare `.` in a pattern like ../fluxa is a regex wildcard.
+          for pat in 'backend/internal' 'backend/pkg' 'pkg/signature' 'pkg/cryptobox' \
+                     'middleware.go' 'notify.go' 'cryptobox.go' 'sign.ts' 'sign-request' \
+                     'make dev' 'make seed' 'vecgen' 'demo_mock' 'kamify-ai'; do
+            hits=$(xargs grep -ilF -- "$pat" < /tmp/audited.txt 2>/dev/null || true)
+            [ -z "$hits" ] || { echo "::error::private-repo reference '$pat' in: $hits"; fail=1; }
+          done
+          # Case-SENSITIVE: -i would match .NET's own ../FluxaDemo project reference.
+          hits=$(xargs grep -lF -- '../fluxa/' < /tmp/audited.txt 2>/dev/null || true)
+          [ -z "$hits" ] || { echo "::error::sibling-checkout path in: $hits"; fail=1; }
+          exit $fail
+      - name: no real credentials
+        run: |
+          set -uo pipefail
+          # Placeholders in .env.example and the fixed test secret in spec/vectors.json are
+          # intentional, so match the SHAPE of a real key rather than its prefix: a real key
+          # is prefix + 24+ hex chars. `sk_test_replace_me` does not match; a leak does.
+          hits=$(xargs grep -lE '(sk|pk)_(live|test)_[0-9a-f]{24,}' < /tmp/audited.txt 2>/dev/null || true)
+          [ -z "$hits" ] || { echo "::error::possible real API key in: $hits"; exit 1; }
+          hits=$(xargs grep -lE 'whsec_[0-9a-f]{32,}' < /tmp/audited.txt 2>/dev/null || true)
+          [ -z "$hits" ] || { echo "::error::possible real webhook secret in: $hits"; exit 1; }
+          [ ! -f .env ] || { echo "::error::.env is committed"; exit 1; }
+      - name: code comments are in English
+        run: |
+          set -uo pipefail
+          # Two kinds of non-ASCII are legitimate: spec/vectors.json ships a CJK body fixture
+          # on purpose (post_unicode_body), and the language suites mirror that same fixture.
+          # Anything else in a code file is a comment that was never translated.
+          fail=0
+          for f in $(grep -E '^\./(node|python|go|ruby|java|php|rust|dotnet)/' /tmp/audited.txt); do
+            grep -qP '[\x{4e00}-\x{9fff}]' "$f" 2>/dev/null || continue
+            if grep -vF '咖啡' "$f" | grep -qP '[\x{4e00}-\x{9fff}]'; then
+              echo "::error::untranslated Chinese in a public code file: $f"; fail=1
+            fi
+          done
+          exit $fail
+      - name: refund guidance is aligned across languages
+        run: |
+          set -uo pipefail
+          # Every receiver must advance the refunded total with max(), never a blind assign —
+          # deliveries are unordered, so assigning regresses it. See spec/SIGNING.md §3.1.
+          fail=0
+          for f in node/src/webhook.js python/src/webhook.py go/cmd/webhook/main.go \
+                   ruby/lib/webhook.rb java/src/main/java/cash/fluxa/demo/WebhookDemo.java \
+                   php/src/webhook.php rust/src/bin/webhook.rs dotnet/FluxaDemo/Webhook.cs; do
+            grep -qi 'max(recorded' "$f" || { echo "::error::$f does not document max(recorded, incoming)"; fail=1; }
+          done
+          exit $fail
