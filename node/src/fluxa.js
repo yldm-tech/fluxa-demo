@@ -80,9 +80,15 @@ export const getOrder = (cfg, orderId) =>
   request(cfg, "GET", `/api/v1/orders/${encodeURIComponent(orderId)}`);
 
 // verifyWebhook checks X-Fluxa-Signature over "<timestamp>.<rawBody>". rawBody MUST be
-// the exact received bytes — a re-serialized object will not match.
+// the exact received bytes — a re-serialized object will not match. It accepts either the
+// received Buffer or a string: passing the Buffer hashes the received bytes verbatim, never
+// round-tripping them through a String (which would turn invalid UTF-8 into replacement
+// characters). A string rawBody hashes identically to before, so the vectors keep passing.
 export function verifyWebhook(webhookSecret, timestamp, rawBody, provided) {
-  const expected = sign(webhookSecret, `${timestamp}.${rawBody}`);
+  const signedRaw = Buffer.isBuffer(rawBody)
+    ? Buffer.concat([Buffer.from(`${timestamp}.`, "utf8"), rawBody])
+    : `${timestamp}.${rawBody}`;
+  const expected = sign(webhookSecret, signedRaw);
   const a = Buffer.from(expected, "utf8");
   const b = Buffer.from(provided ?? "", "utf8");
   return a.length === b.length && timingSafeEqual(a, b);

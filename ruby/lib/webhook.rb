@@ -186,6 +186,10 @@ def handle(sock, config, processed, lock)
   respond(sock, "200 OK", "ok")
 end
 
+# Validate the webhook secret at startup rather than failing on the first callback that
+# arrives — the accessor aborts with an actionable message if it is unset.
+config.webhook_secret
+
 server = TCPServer.new("0.0.0.0", config.webhook_port)
 puts "fluxa webhook receiver listening on http://localhost:#{config.webhook_port}"
 puts "Point your portal callback URL here (it must be publicly reachable — use a tunnel such as ngrok for local testing)."

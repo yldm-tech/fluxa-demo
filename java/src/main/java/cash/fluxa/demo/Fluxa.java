@@ -71,10 +71,14 @@ public final class Fluxa {
   }
 
   public static String sign(String secret, String data) {
+    return signBytes(secret, data.getBytes(StandardCharsets.UTF_8));
+  }
+
+  static String signBytes(String secret, byte[] data) {
     try {
       Mac mac = Mac.getInstance("HmacSHA256");
       mac.init(new SecretKeySpec(secret.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
-      return hex(mac.doFinal(data.getBytes(StandardCharsets.UTF_8)));
+      return hex(mac.doFinal(data));
     } catch (GeneralSecurityException e) {
       throw new IllegalStateException("HMAC-SHA256 unavailable", e);
     }
@@ -144,10 +148,23 @@ public final class Fluxa {
   }
 
   // verifyWebhook checks X-Fluxa-Signature over "<timestamp>.<rawBody>". rawBody MUST be
-  // the exact received bytes — a re-serialized object will not match.
+  // the exact received bytes — a re-serialized object will not match. This String overload
+  // hashes identically to before, so the vectors keep passing; the byte[] overload below is
+  // what the receiver uses to avoid a String round-trip of the raw bytes.
   public static boolean verifyWebhook(String webhookSecret, String timestamp, String rawBody, String provided) {
-    String expected = sign(webhookSecret, timestamp + "." + rawBody);
-    byte[] a = expected.getBytes(StandardCharsets.UTF_8);
+    return verifyWebhook(webhookSecret, timestamp, rawBody.getBytes(StandardCharsets.UTF_8), provided);
+  }
+
+  // Byte-exact overload: feeds the received bytes straight into the MAC, never round-tripping
+  // them through a String (which would turn invalid UTF-8 into replacement characters). fluxa
+  // bodies are always valid UTF-8 JSON, so this matches the String overload for real traffic —
+  // it is the same defensive treatment the Go/Python/Rust/Ruby demos give the raw body.
+  public static boolean verifyWebhook(String webhookSecret, String timestamp, byte[] rawBody, String provided) {
+    byte[] tsDot = (timestamp + ".").getBytes(StandardCharsets.UTF_8);
+    byte[] signed = new byte[tsDot.length + rawBody.length];
+    System.arraycopy(tsDot, 0, signed, 0, tsDot.length);
+    System.arraycopy(rawBody, 0, signed, tsDot.length, rawBody.length);
+    byte[] a = signBytes(webhookSecret, signed).getBytes(StandardCharsets.UTF_8);
     byte[] b = (provided == null ? "" : provided).getBytes(StandardCharsets.UTF_8);
     // MessageDigest.isEqual is the JDK's constant-time comparison — never use String.equals here.
     return MessageDigest.isEqual(a, b);
