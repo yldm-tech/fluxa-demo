@@ -28,8 +28,11 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-      - run: node --test "test/*.test.js"
+          node-version: "18" # the floor the README advertises — verify the promise, not just latest
+      # `node --test` auto-discovers test/**/*.test.js. A quoted glob path arg
+      # (node --test "test/*.test.js") only works on Node 22+, so it would break
+      # the floor we claim to support.
+      - run: node --test
         working-directory: node
 
   python:
@@ -126,7 +129,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
         with:
-          node-version: "22"
+          node-version: "18" # same floor as the node job; node --test auto-discovers on 18
       - name: vectors test must fail on a 4-line canonical
         working-directory: node
         run: |
@@ -138,7 +141,7 @@ jobs:
             echo "mutation did not apply — the canonical() shape changed; update this check" >&2
             exit 1
           fi
-          if node --test "test/*.test.js" >/dev/null 2>&1; then
+          if node --test >/dev/null 2>&1; then
             echo "FAIL: the suite passed with a 4-line canonical — it is not testing the signature" >&2
             cp /tmp/fluxa.js.bak src/fluxa.js
             exit 1

@@ -48,10 +48,10 @@ reachable, so use a tunnel (ngrok, Cloudflare Tunnel) and register that URL in t
 ### Without Node installed
 
 ```bash
-docker run --rm -v "$PWD/..":/app -w /app/node node:22-slim node --test "test/*.test.js"
+docker run --rm -v "$PWD/..":/app -w /app/node node:18-slim node --test
 ```
 
-Swap `node --test "test/*.test.js"` for `node src/charge.js` to charge from the container.
+Swap `node --test` for `node src/charge.js` to charge from the container.
 Note that `localhost` inside a container is the container itself — point at the hosted API
 with `-e FLUXA_BASE_URL=https://pay.fluxa.cash`.
 
