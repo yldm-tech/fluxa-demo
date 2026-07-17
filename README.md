@@ -1,5 +1,7 @@
 # fluxa payment integration demos
 
+[![CI](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml)
+
 Working merchant integrations for the [fluxa](https://pay.fluxa.cash) payment API, in 8 languages.
 Copy `.env.example` to `.env`, fill in three secrets, and run.
 

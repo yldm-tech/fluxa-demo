@@ -1,5 +1,7 @@
 # fluxa 支付对接 demo
 
+[![CI](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml)
+
 [fluxa](https://pay.fluxa.cash) 商户 API 的多语言接入示例，共 8 种语言。
 把 `.env.example` 复制成 `.env`，填三个密钥，就能跑。
 
