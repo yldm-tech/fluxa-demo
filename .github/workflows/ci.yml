@@ -120,9 +120,17 @@ jobs:
       - run: dotnet test --nologo
         working-directory: dotnet
 
-  # Fails the build if a demo's signing could silently disagree with the server: drop the
-  # CANONICAL_QUERY line from the Node reference (the classic 4-line bug) and the vectors
-  # test MUST fail. A suite that stays green under that mutation is asserting nothing.
+  # Fails the build if a demo's signing could silently disagree with the server. Both steps
+  # mutate the Node reference and require the vectors test to go red — a suite that stays green
+  # under either is asserting nothing. The two mutations catch different failure modes, exactly
+  # as AGENTS.md §4 prescribes:
+  #   1. Drop the CANONICAL_QUERY line (the classic 4-line bug). Blunt: it reds nearly every
+  #      request vector regardless of how good the query comparator is.
+  #   2. Swap the UTF-8 byte comparator for JavaScript's default sort() (UTF-16). Sharp: only
+  #      get_query_utf16_divergence fails, because every other query vector is ASCII where all
+  #      comparators agree. This is the mutation README.md and spec/README.md claim the suites
+  #      are tested against — without it that claim has nothing guarding it, and a change that
+  #      drops the divergence vector or empties its assertion would still pass step 1.
   mutation-check:
     runs-on: ubuntu-latest
     steps:
@@ -143,6 +151,24 @@ jobs:
           fi
           if node --test >/dev/null 2>&1; then
             echo "FAIL: the suite passed with a 4-line canonical — it is not testing the signature" >&2
+            cp /tmp/fluxa.js.bak src/fluxa.js
+            exit 1
+          fi
+          cp /tmp/fluxa.js.bak src/fluxa.js
+          echo "OK: the mutation was caught"
+      - name: vectors test must fail on a UTF-16 query comparator
+        working-directory: node
+        run: |
+          set -euo pipefail
+          cp src/fluxa.js /tmp/fluxa.js.bak
+          # Swap the explicit UTF-8 byte comparator for JavaScript's default sort() (UTF-16).
+          perl -0pi -e 's/raw\.split\("&"\)\.sort\(byteOrder\)\.join\("&"\)/raw.split("&").sort().join("&")/' src/fluxa.js
+          if grep -q 'sort(byteOrder)' src/fluxa.js; then
+            echo "mutation did not apply — canonicalQuery's sort shape changed; update this check" >&2
+            exit 1
+          fi
+          if node --test >/dev/null 2>&1; then
+            echo "FAIL: the suite passed with a UTF-16 comparator — get_query_utf16_divergence is not testing the sort" >&2
             cp /tmp/fluxa.js.bak src/fluxa.js
             exit 1
           fi
