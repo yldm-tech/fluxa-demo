@@ -11,6 +11,7 @@ require_once __DIR__ . '/Config.php';
 require_once __DIR__ . '/Fluxa.php';
 
 const MAX_SKEW_SECONDS = 300;
+const MAX_BODY_BYTES = 1 << 20;
 
 function respond(int $status, string $text): void
 {
@@ -56,6 +57,34 @@ function dedupeKey(array $evt): string
     return "{$evt['event']}:{$evt['order_id']}:" . ($evt['refunded_amount'] ?? '');
 }
 
+// readBody drains php://input with a hard cap, matching the 1 MiB limit and 413 response the
+// other language demos enforce. Returns null when the body exceeds MAX_BODY_BYTES. post_max_size
+// would backstop this eventually (with an empty php://input, not a 413), so the cap is applied
+// here explicitly to keep the observable behaviour in step with the other receivers.
+function readBody(): ?string
+{
+    $in = fopen('php://input', 'rb');
+    if ($in === false) {
+        return '';
+    }
+    $body = '';
+    while (!feof($in)) {
+        $chunk = fread($in, 8192);
+        if ($chunk === false) {
+            break;
+        }
+        $body .= $chunk;
+        if (strlen($body) > MAX_BODY_BYTES) {
+            fclose($in);
+
+            return null;
+        }
+    }
+    fclose($in);
+
+    return $body;
+}
+
 function claimEvent(string $key): bool
 {
     $dir = sys_get_temp_dir() . '/fluxa-demo-webhook';
@@ -84,7 +113,12 @@ function handle(): void
     // The signature MUST be verified against the raw received bytes: deserializing and
     // re-serializing changes the bytes and the signature will no longer match. php://input is
     // the exact body as received.
-    $rawBody = (string) file_get_contents('php://input');
+    $rawBody = readBody();
+    if ($rawBody === null) {
+        respond(413, 'body too large');
+
+        return;
+    }
     $event = (string) ($_SERVER['HTTP_X_FLUXA_EVENT'] ?? '');
     $ts = (string) ($_SERVER['HTTP_X_FLUXA_TIMESTAMP'] ?? '');
     $sig = (string) ($_SERVER['HTTP_X_FLUXA_SIGNATURE'] ?? '');

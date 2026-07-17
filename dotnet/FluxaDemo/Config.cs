@@ -67,8 +67,13 @@ public sealed class Config
 
     private string? Get(string key, string? fallback = null)
     {
+        // Presence check, not IsNullOrEmpty: a process env var that is SET but empty must win
+        // over the .env file, mirroring Go's os.LookupEnv and Node's `process.env[k] ?? ...`.
+        // GetEnvironmentVariable returns null when unset and "" when set-but-empty, so `is not
+        // null` is the presence test. This makes `FLUXA_SECRET= dotnet run` trip the
+        // required-check (as the other demos do) rather than silently falling back to .env.
         var fromProcess = Environment.GetEnvironmentVariable(key);
-        if (!string.IsNullOrEmpty(fromProcess)) return fromProcess;
+        if (fromProcess is not null) return fromProcess;
         return _fileEnv.TryGetValue(key, out var v) ? v : fallback;
     }
 

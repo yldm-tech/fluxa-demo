@@ -53,6 +53,9 @@ internal static class Webhook
     public static async Task<int> RunAsync()
     {
         var cfg = Config.Load();
+        // Validate the webhook secret at startup rather than failing on the first callback that
+        // arrives — the property exits with an actionable message if it is unset.
+        _ = cfg.WebhookSecret;
 
         using var listener = new HttpListener();
         listener.Prefixes.Add($"http://+:{cfg.WebhookPort}/");
@@ -88,6 +91,8 @@ internal static class Webhook
             await RespondAsync(res, 413, "body too large");
             return;
         }
+        // Verify over the raw bytes (below); the decoded string is only used after the
+        // signature passes, for decryption and JSON parsing.
         var rawBody = Encoding.UTF8.GetString(rawBytes);
 
         var eventName = req.Headers["X-Fluxa-Event"];
@@ -95,7 +100,7 @@ internal static class Webhook
         var sig = req.Headers["X-Fluxa-Signature"];
         var encryption = req.Headers["X-Fluxa-Encryption"];
 
-        if (!Fluxa.VerifyWebhook(cfg.WebhookSecret, ts, rawBody, sig))
+        if (!Fluxa.VerifyWebhook(cfg.WebhookSecret, ts, rawBytes, sig))
         {
             Console.Error.WriteLine($"✗ Signature verification failed, event={eventName} — rejected");
             await RespondAsync(res, 401, "bad signature");

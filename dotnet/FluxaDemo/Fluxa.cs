@@ -146,9 +146,22 @@ public static class Fluxa
     // the exact received bytes — a re-serialized object will not match.
     // Freshness is deliberately NOT checked here: this is the pure HMAC step, and the replay
     // window belongs to the caller (see Webhook.cs).
-    public static bool VerifyWebhook(string webhookSecret, string? timestamp, string rawBody, string? provided)
+    public static bool VerifyWebhook(string webhookSecret, string? timestamp, string rawBody, string? provided) =>
+        VerifyWebhook(webhookSecret, timestamp, Encoding.UTF8.GetBytes(rawBody), provided);
+
+    // Byte-exact overload: feeds the received bytes straight into the MAC, never round-tripping
+    // them through a String (which would turn invalid UTF-8 into replacement characters). fluxa
+    // bodies are always valid UTF-8 JSON, so this matches the string overload for real traffic —
+    // it is the same defensive treatment the Go/Python/Rust/Ruby demos give the raw body. The
+    // string overload above hashes identically to before, so the vectors keep passing.
+    public static bool VerifyWebhook(
+        string webhookSecret, string? timestamp, ReadOnlySpan<byte> rawBody, string? provided)
     {
-        var expected = Sign(webhookSecret, $"{timestamp}.{rawBody}");
+        var prefix = Encoding.UTF8.GetBytes($"{timestamp}.");
+        var signed = new byte[prefix.Length + rawBody.Length];
+        prefix.CopyTo(signed, 0);
+        rawBody.CopyTo(signed.AsSpan(prefix.Length));
+        var expected = Hex(HMACSHA256.HashData(Encoding.UTF8.GetBytes(webhookSecret), signed));
         var a = Encoding.UTF8.GetBytes(expected);
         var b = Encoding.UTF8.GetBytes(provided ?? "");
         return CryptographicOperations.FixedTimeEquals(a, b);

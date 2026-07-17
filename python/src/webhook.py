@@ -169,6 +169,10 @@ def main():
     # (or Docker) shows each event as it arrives instead of stalling in a block buffer.
     sys.stdout.reconfigure(line_buffering=True)
 
+    # Validate the webhook secret at startup rather than failing on the first callback that
+    # arrives — the property exits with an actionable message if it is unset.
+    _ = config.webhook_secret
+
     # Single-threaded on purpose: mirrors the Node demo's model and keeps the `processed`
     # dedupe set race-free without a lock.
     server = HTTPServer(("", config.webhook_port), WebhookHandler)

@@ -98,6 +98,8 @@ public final class WebhookDemo {
         respond(exchange, 413, "body too large");
         return;
       }
+      // Verify over the raw bytes (below); the decoded string is only used after the signature
+      // passes, for decryption and JSON parsing.
       String rawBody = new String(raw, StandardCharsets.UTF_8);
 
       String event = header(exchange, "X-Fluxa-Event");
@@ -105,7 +107,7 @@ public final class WebhookDemo {
       String sig = header(exchange, "X-Fluxa-Signature");
       String encryption = header(exchange, "X-Fluxa-Encryption");
 
-      if (!Fluxa.verifyWebhook(webhookSecret, ts, rawBody, sig)) {
+      if (!Fluxa.verifyWebhook(webhookSecret, ts, raw, sig)) {
         System.err.println("✗ Signature verification failed, event=" + event + " — rejected");
         respond(exchange, 401, "bad signature");
         return;

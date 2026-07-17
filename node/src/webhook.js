@@ -50,13 +50,17 @@ const server = createServer((req, res) => {
 
   req.on("end", () => {
     if (res.writableEnded) return;
-    const rawBody = Buffer.concat(chunks).toString("utf8");
+    // Keep the raw bytes for signature verification — hashing the received Buffer directly
+    // avoids a String round-trip. The decoded string is only used once the signature passes,
+    // for decryption and JSON parsing.
+    const rawBytes = Buffer.concat(chunks);
+    const rawBody = rawBytes.toString("utf8");
     const event = req.headers["x-fluxa-event"];
     const ts = req.headers["x-fluxa-timestamp"];
     const sig = req.headers["x-fluxa-signature"];
     const encryption = req.headers["x-fluxa-encryption"];
 
-    if (!verifyWebhook(config.webhookSecret, ts, rawBody, sig)) {
+    if (!verifyWebhook(config.webhookSecret, ts, rawBytes, sig)) {
       console.error(`✗ Signature verification failed event=${event} — rejected`);
       res.writeHead(401).end("bad signature");
       return;
@@ -144,6 +148,10 @@ const server = createServer((req, res) => {
     res.writeHead(200).end("ok");
   });
 });
+
+// Validate the webhook secret at startup rather than failing on the first callback that
+// arrives — the config getter exits with an actionable message if it is unset.
+void config.webhookSecret;
 
 server.listen(config.webhookPort, () => {
   console.log(`fluxa webhook receiver listening on http://localhost:${config.webhookPort}`);
