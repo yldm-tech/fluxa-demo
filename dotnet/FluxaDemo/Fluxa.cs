@@ -179,8 +179,20 @@ public static class Fluxa
     public static string DecryptWebhook(string webhookSecret, string envelopeJson)
     {
         using var doc = JsonDocument.Parse(envelopeJson);
-        var data = doc.RootElement.GetProperty("data").GetString()
-            ?? throw new FluxaException("envelope is missing the data field");
+        // Reach for "data" defensively. A signature-verified envelope can still be malformed
+        // (fluxa-sent, so not attacker-forgeable — but it reaches this path), and a raw
+        // GetProperty throws KeyNotFoundException on a missing field or InvalidOperationException
+        // on a non-object root. Neither is in Webhook.cs's catch filter, so one such delivery
+        // would escape HandleAsync and terminate the whole listener, dropping every later
+        // webhook. Throw FluxaException (which the filter catches) instead, matching how the
+        // Java demo surfaces IllegalArgumentException for the same case.
+        if (doc.RootElement.ValueKind != JsonValueKind.Object
+            || !doc.RootElement.TryGetProperty("data", out var dataElem)
+            || dataElem.ValueKind != JsonValueKind.String)
+        {
+            throw new FluxaException("envelope is missing the data field");
+        }
+        var data = dataElem.GetString()!;
         var blob = Convert.FromBase64String(data);
         if (blob.Length < 12 + 16) throw new FluxaException($"envelope is too short: {blob.Length} bytes");
 

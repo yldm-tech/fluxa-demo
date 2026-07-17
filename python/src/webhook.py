@@ -56,7 +56,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self._reply(405, "only POST")
 
     def do_POST(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        # Parse Content-Length defensively: this runs before any signature check, so an
+        # unauthenticated caller controls the header. A non-numeric or negative value must
+        # be a clean 400, not an uncaught ValueError — BaseHTTPRequestHandler would turn
+        # that into a traceback and a dropped connection with no HTTP response at all.
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._reply(400, "invalid Content-Length")
+            return
+        if length < 0:
+            self._reply(400, "invalid Content-Length")
+            return
         if length > MAX_BODY_BYTES:
             self._reply(413, "body too large")
             return
