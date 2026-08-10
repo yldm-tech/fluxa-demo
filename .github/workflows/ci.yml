@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   node:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -36,7 +36,7 @@ jobs:
         working-directory: node
 
   python:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -51,7 +51,7 @@ jobs:
         working-directory: python
 
   go:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-go@v6
@@ -63,7 +63,7 @@ jobs:
         working-directory: go
 
   ruby:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: ruby/setup-ruby@v1
@@ -73,7 +73,7 @@ jobs:
         working-directory: ruby
 
   php:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: shivammathur/setup-php@v2
@@ -84,7 +84,7 @@ jobs:
         working-directory: php
 
   java:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-java@v5
@@ -96,7 +96,7 @@ jobs:
         working-directory: java
 
   rust:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
@@ -111,7 +111,7 @@ jobs:
         working-directory: rust
 
   dotnet:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-dotnet@v5
@@ -132,7 +132,7 @@ jobs:
   #      are tested against — without it that claim has nothing guarding it, and a change that
   #      drops the divergence vector or empties its assertion would still pass step 1.
   mutation-check:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-node@v6
@@ -186,7 +186,7 @@ jobs:
   # than none. This workflow is excluded because it necessarily contains every string it
   # searches for and would otherwise flag itself forever.
   hygiene:
-    runs-on: ubuntu-latest
+    runs-on: yldm-backend-runners
     steps:
       - uses: actions/checkout@v5
       - name: build the audited file list
