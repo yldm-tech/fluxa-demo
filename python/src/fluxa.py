@@ -18,11 +18,19 @@ import urllib.request
 # Optional: the AES-256-GCM envelope needs a real AES implementation, which the stdlib
 # does not ship. Imported lazily-ish (at module load, but tolerated missing) so that the
 # signing path — everything that matters when WEBHOOK_ENCRYPTION is off — stays dependency-free.
+#
+# Catch BaseException, not just ImportError: a *present but broken* cryptography install
+# (native backend missing, ABI mismatch, or a pyo3 panic — the last raises PanicException,
+# which subclasses BaseException, not Exception) must degrade to "encryption unavailable"
+# just like an absent one. Narrowing this to ImportError would let a broken build crash the
+# whole module at import time and take down signing/charging/plaintext webhooks with it —
+# the exact dependency-free guarantee this block exists to protect. This is a deliberate,
+# scoped exception to the usual "never catch BaseException" rule: it guards one optional import.
 try:
     from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
     HAS_CRYPTOGRAPHY = True
-except ImportError:  # pragma: no cover - depends on the environment
+except BaseException:  # pragma: no cover - depends on the environment
     AESGCM = None
     HAS_CRYPTOGRAPHY = False
 

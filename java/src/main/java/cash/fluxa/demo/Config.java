@@ -26,7 +26,19 @@ public final class Config {
     this.channel = get("FLUXA_CHANNEL", "mock");
     this.currency = get("FLUXA_CURRENCY", "USD");
     this.amount = get("FLUXA_AMOUNT", "9.99");
-    this.webhookPort = Integer.parseInt(get("WEBHOOK_PORT", "9000"));
+    this.webhookPort = parsePort(get("WEBHOOK_PORT", "9000"));
+  }
+
+  // Config.load() runs for BOTH subcommands, and the charge demo never binds the port, so a
+  // malformed WEBHOOK_PORT (including a bare `WEBHOOK_PORT=` line, whose empty value wins over
+  // the default) must not abort it with a NumberFormatException from the constructor. Fall
+  // back to the default, matching the C# demo's `int.TryParse(...) ? p : 9000`.
+  static int parsePort(String raw) {
+    try {
+      return Integer.parseInt(raw.trim());
+    } catch (NumberFormatException e) {
+      return 9000;
+    }
   }
 
   // repoRoot walks up from the working directory to the demo repo root — the directory
