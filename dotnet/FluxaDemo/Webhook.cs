@@ -10,38 +10,17 @@ namespace FluxaDemo;
 
 internal static class Webhook
 {
-    // Delivery is at-least-once: the same event can arrive more than once, so processing MUST
-    // be idempotent. The key is DedupeKey() below. In a real integration this belongs in a
-    // database unique constraint (a unique index on order_id + event + refunded_amount); the
-    // in-process HashSet is a demo stand-in.
+    // Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
     private static readonly HashSet<string> Processed = new(StringComparer.Ordinal);
 
     private const int MaxSkewSeconds = 300;
     private const int MaxBodyBytes = 1 << 20;
 
-    /// <summary>
-    /// DedupeKey is the idempotency key: <c>event : order_id : refunded_amount</c>.
-    ///
-    /// <para>The key MUST include refunded_amount. <c>(event, order_id)</c> alone is <b>not
-    /// unique</b>: a single order can be partially refunded more than once, and each refund
-    /// fires its own payment.refunded. Deduplicating on just that pair drops the second
-    /// partial refund as a "duplicate" and returns 2xx — fluxa then records the delivery as
-    /// successful and never retries. The customer is under-refunded and nothing errors
-    /// anywhere in the chain.</para>
-    ///
-    /// <para>refunded_amount is cumulative and strictly increasing, so it separates a
-    /// redelivery of the same event (same value → deduplicate) from a genuinely new partial
-    /// refund (higher value → process).</para>
-    ///
-    /// <para>payment.succeeded / payment.failed carry no refunded_amount, and Fluxa.Field
-    /// returns "" for an absent field, so for them the key degrades to
-    /// <c>(event, order_id)</c> — which is correct for those events.</para>
-    ///
-    /// <para>In a real integration this belongs in a database unique constraint (a unique
-    /// index on order_id + event + refunded_amount). See ../../spec/SIGNING.md §3.1.</para>
-    /// </summary>
+    // Read only from a verified, decrypted body; empty means invalid.
     internal static string DedupeKey(JsonElement evt) =>
-        $"{Fluxa.Field(evt, "event")}:{Fluxa.Field(evt, "order_id")}:{Fluxa.Field(evt, "refunded_amount")}";
+        evt.ValueKind == JsonValueKind.Object
+        && evt.TryGetProperty("event_id", out var id)
+        && id.ValueKind == JsonValueKind.String ? id.GetString()! : "";
 
     // IsTest reads is_test without throwing on an absent property. Only a literal JSON true
     // counts — a missing field is not a test order.
@@ -153,6 +132,11 @@ internal static class Webhook
         }
 
         var key = DedupeKey(evt);
+        if (key.Length == 0)
+        {
+            await RespondAsync(res, 400, "missing or invalid event_id");
+            return;
+        }
         if (!Processed.Add(key))
         {
             // Redelivery: already processed, so return 2xx without shipping goods or
@@ -178,11 +162,48 @@ internal static class Webhook
         switch (Fluxa.Field(evt, "event"))
         {
             case "payment.succeeded":
-                if (!isTest)
+                if (!isTest && evt.TryGetProperty("settle_on_received", out var settle) && settle.ValueKind == JsonValueKind.True)
+                {
+                    Console.WriteLine("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. " + Fluxa.Field(evt, "received_amount"));
+                }
+                else if (!isTest)
                 {
                     Console.WriteLine(
                         "  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)");
                 }
+                break;
+            case "payment.additional_received":
+                if (!isTest) Console.WriteLine("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. " + Fluxa.Field(evt, "received_amount"));
+                break;
+            case "payment.pending":
+                Console.WriteLine("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.");
+                break;
+            case "order.created":
+                Console.WriteLine("  → Record the pending order; do not fulfill.");
+                break;
+            case "order.expired":
+                Console.WriteLine("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+                break;
+            case "order.canceled":
+                Console.WriteLine("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+                break;
+            case "payment.dispute_created":
+                Console.WriteLine("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.");
+                break;
+            case "payment.dispute_closed":
+                Console.WriteLine("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.");
+                break;
+            case "settlement.completed":
+                Console.WriteLine("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.");
+                break;
+            case "subscription.charged":
+                Console.WriteLine("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.");
+                break;
+            case "subscription.payment_failed":
+                Console.WriteLine("  → Record the failed subscription payment; reconcile subscription state.");
+                break;
+            case "subscription.completed":
+                Console.WriteLine("  → Record subscription completion; do not fulfill again.");
                 break;
             case "payment.failed":
                 Console.WriteLine("  → Mark the order failed here");

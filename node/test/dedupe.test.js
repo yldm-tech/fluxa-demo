@@ -10,14 +10,15 @@
 // correct behavior. See ../../spec/SIGNING.md §3.1.
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 
-// Kept in sync with dedupeKey in src/webhook.js.
-const dedupeKey = (evt) => `${evt.event}:${evt.order_id}:${evt.refunded_amount ?? ""}`;
+import { dedupeKey } from "../src/fluxa.js";
 
 // The broken implementation these tests falsify — kept here so nobody "simplifies" back to it.
 const brokenKey = (evt) => `${evt.event}:${evt.order_id}`;
 
 const refund = (cumulative, status = "partially_refunded") => ({
+  event_id: `whk_refund_${cumulative}`,
   event: "payment.refunded",
   order_id: "ord_X",
   merchant_order_id: "o-1",
@@ -48,14 +49,14 @@ test("a full refund differs from an earlier partial refund", () => {
   assert.notEqual(dedupeKey(refund("30.00")), dedupeKey(refund("1000.00", "refunded")));
 });
 
-test("payment.succeeded has no refunded_amount, so the key degrades to (event, order_id)", () => {
-  const ok = { event: "payment.succeeded", order_id: "ord_X", status: "paid" };
-  assert.equal(dedupeKey(ok), "payment.succeeded:ord_X:");
+test("payment.succeeded uses event_id even without refunded_amount", () => {
+  const ok = { event_id: "whk_paid", event: "payment.succeeded", order_id: "ord_X", status: "paid" };
+  assert.equal(dedupeKey(ok), "whk_paid");
   assert.equal(dedupeKey(ok), dedupeKey({ ...ok }), "a redelivery must be deduplicated");
 });
 
 test("succeeded and refunded are different keys", () => {
-  const ok = { event: "payment.succeeded", order_id: "ord_X" };
+  const ok = { event_id: "whk_paid", event: "payment.succeeded", order_id: "ord_X" };
   assert.notEqual(dedupeKey(ok), dedupeKey(refund("30.00")));
 });
 
@@ -135,4 +136,21 @@ test("decimalGreater compares as decimals, not floats or strings", () => {
   assert.ok(decimalGreater("10.00", "9.90"), "10.00 must be greater than 9.90");
   assert.ok(!decimalGreater("9.90", "10.00"));
   assert.ok(!decimalGreater("50.00", "50.00"), "equal is not greater");
+});
+
+test("all event identities survive retries without collapsing distinct events", () => {
+  const events = JSON.parse(readFileSync(new URL("../../spec/events.json", import.meta.url), "utf8"));
+  const seen = new Set();
+  for (const evt of events) {
+    assert.equal(dedupeKey(evt), evt.event_id);
+    assert.ok(!seen.has(dedupeKey(evt)), "distinct events with identical business fields must survive");
+    seen.add(dedupeKey(evt));
+    assert.ok(seen.has(dedupeKey({ ...evt })), "retry must reuse the same identity");
+  }
+});
+
+test("missing or malformed event identity has no usable dedupe key", () => {
+  for (const evt of [null, [], {}, { event_id: null }, { event_id: "" }, { event_id: 123 }, { event_id: [] }]) {
+    assert.equal(dedupeKey(evt), "");
+  }
 });

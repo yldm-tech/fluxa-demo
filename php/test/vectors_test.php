@@ -169,6 +169,21 @@ foreach ($vectors['envelopes'] as $e) {
     });
 }
 
+T::section('current event identities', function () {
+    $events = json_decode(file_get_contents(__DIR__ . '/../../spec/events.json'), true, 512, JSON_THROW_ON_ERROR);
+    $seen = [];
+    foreach ($events as $evt) {
+        $key = Fluxa::dedupeKey($evt);
+        T::eq($key, $evt['event_id'], 'use the signed body identity');
+        T::ok(!isset($seen[$key]), 'distinct events must survive');
+        $seen[$key] = true;
+        T::ok(isset($seen[Fluxa::dedupeKey($evt)]), 'retry must reuse the same identity');
+    }
+    foreach ([null, [], ['event_id' => null], ['event_id' => ''], ['event_id' => 123], ['event_id' => []]] as $evt) {
+        T::eq(Fluxa::dedupeKey($evt), '', 'invalid identity must be rejected');
+    }
+});
+
 // ---- Idempotency-key regression tests ----
 //
 // fluxa allows an order to be partially refunded more than once — further refunds are allowed
@@ -180,15 +195,13 @@ foreach ($vectors['envelopes'] as $e) {
 // under-refunded and nothing errors anywhere in the chain. The sections below pin the correct
 // behaviour. See ../../spec/SIGNING.md §3.1.
 
-// Kept in sync with dedupeKey in src/webhook.php. It is duplicated here rather than required:
-// src/webhook.php calls handle() at the bottom, so merely loading it would read php://input
-// and emit a response.
-$dedupeKey = fn (array $evt): string => "{$evt['event']}:{$evt['order_id']}:" . ($evt['refunded_amount'] ?? '');
+$dedupeKey = [Fluxa::class, 'dedupeKey'];
 
 // The tempting-but-wrong key these tests falsify. Kept so nobody "simplifies" back to it.
 $brokenKey = fn (array $evt): string => "{$evt['event']}:{$evt['order_id']}";
 
 $refund = fn (string $cumulative, string $status = 'partially_refunded'): array => [
+    'event_id' => 'whk_refund_' . $cumulative,
     'event' => 'payment.refunded',
     'order_id' => 'ord_X',
     'merchant_order_id' => 'o-1',
@@ -224,15 +237,15 @@ T::section('dedupe key/a full refund differs from an earlier partial refund', fu
     );
 });
 
-T::section('dedupe key/succeeded has no refunded_amount, so the key degrades', function () use ($dedupeKey) {
-    $ok = ['event' => 'payment.succeeded', 'order_id' => 'ord_X', 'status' => 'paid'];
-    T::eq($dedupeKey($ok), 'payment.succeeded:ord_X:', 'an absent field must degrade to a trailing empty part');
+T::section('dedupe key/succeeded uses event_id without refunded_amount', function () use ($dedupeKey) {
+    $ok = ['event_id' => 'whk_paid', 'event' => 'payment.succeeded', 'order_id' => 'ord_X', 'status' => 'paid'];
+    T::eq($dedupeKey($ok), 'whk_paid', 'an absent refund does not change the event identity');
     $redelivery = $ok;
     T::eq($dedupeKey($ok), $dedupeKey($redelivery), 'a redelivery must be deduplicated');
 });
 
 T::section('dedupe key/succeeded and refunded are different keys', function () use ($dedupeKey, $refund) {
-    $ok = ['event' => 'payment.succeeded', 'order_id' => 'ord_X'];
+    $ok = ['event_id' => 'whk_paid', 'event' => 'payment.succeeded', 'order_id' => 'ord_X'];
     T::ok($dedupeKey($ok) !== $dedupeKey($refund('30.00')), 'different events must have different keys');
 });
 

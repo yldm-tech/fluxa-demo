@@ -192,7 +192,12 @@ impl Client {
     /// re-serializing after signing can change key order or escaping, and any such
     /// difference invalidates the signature. (That is why this does not use ureq's
     /// send_json: it would serialize a second time itself.)
-    fn request<T: DeserializeOwned>(&self, method: &str, path: &str, body: &str) -> Result<T, Error> {
+    fn request<T: DeserializeOwned>(
+        &self,
+        method: &str,
+        path: &str,
+        body: &str,
+    ) -> Result<T, Error> {
         let method = method.to_uppercase();
         let url = format!("{}{}", self.cfg.base_url, path);
         let headers = signed_headers(
@@ -227,7 +232,8 @@ impl Client {
                 .map_err(|e| Error::Http(format!("failed to build request: {e}")))?;
             self.agent.run(req)
         };
-        let mut res = sent.map_err(|e| Error::Http(format!("{method} {path} request failed: {e}")))?;
+        let mut res =
+            sent.map_err(|e| Error::Http(format!("{method} {path} request failed: {e}")))?;
 
         let status = res.status().as_u16();
         let raw = res
@@ -317,6 +323,13 @@ pub struct Order {
     pub status: String,
     pub amount: String,
     pub currency: String,
+    #[serde(default)]
+    pub settle_on_received: bool,
+    pub min_received_amount: Option<String>,
+    pub received_amount: Option<String>,
+    pub refunded_amount: Option<String>,
+    pub fee: Option<String>,
+    pub net: Option<String>,
 }
 
 /// Payment is this order's payment record on the channel side.
@@ -349,10 +362,15 @@ pub struct Instruction {
     // type=client_secret
     #[serde(default)]
     pub client_secret: String,
+    #[serde(default)]
+    pub publishable_key: String,
+    pub expires_at: Option<String>,
+    #[serde(default)]
+    pub extra: serde_json::Value,
 }
 
 /// ChargeRequest is the POST /api/v1/charges request body.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Default, Serialize)]
 pub struct ChargeRequest {
     /// merchant_order_id is the idempotency key: re-sending the same value returns the
     /// same order (idempotent: true) rather than creating a second charge.
@@ -360,13 +378,25 @@ pub struct ChargeRequest {
     /// amount is a decimal string — never a float.
     pub amount: String,
     pub currency: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
     pub channel: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub network: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub method: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub presentation: String,
+    /// None omits the field; Some(false) is explicit on an idempotent replay.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settle_on_received: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub min_received_amount: Option<String>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub subject: String,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub description: String,
     #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub metadata: std::collections::BTreeMap<String, String>,
+    pub metadata: std::collections::BTreeMap<String, serde_json::Value>,
     #[serde(skip_serializing_if = "String::is_empty")]
     pub return_url: String,
     #[serde(skip_serializing_if = "String::is_empty")]
@@ -393,20 +423,30 @@ pub struct ChargeResponse {
 #[derive(Debug, Deserialize)]
 pub struct OrderResponse {
     pub order: Order,
+    pub payment: Option<Payment>,
+    pub checkout_url: Option<String>,
+    #[serde(default)]
+    pub settlements: Vec<serde_json::Value>,
 }
 
 /// Event is the body of a fluxa webhook. Field reference: ../../spec/SIGNING.md §3.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 pub struct Event {
+    #[serde(default)]
+    pub event_id: String,
     pub event: String,
+    #[serde(default)]
     pub order_id: String,
     #[serde(default)]
     pub merchant_order_id: String,
     /// amount is the **order total**, not the amount refunded by this event. Computing a
     /// refund from it reads "1 refunded on a 1000 order" as "1000 refunded".
+    #[serde(default)]
     pub amount: String,
+    #[serde(default)]
     pub currency: String,
-    /// status is one of paid / failed / refunded / partially_refunded.
+    /// status reflects the order lifecycle, including pending, paid, refunded, failed, expired and canceled.
+    #[serde(default)]
     pub status: String,
     #[serde(default)]
     pub channel: String,
@@ -421,35 +461,38 @@ pub struct Event {
     /// Test-key orders do fire webhooks, so the integration stays exercisable.
     #[serde(default)]
     pub is_test: bool,
+    #[serde(default)]
+    pub settle_on_received: bool,
+    #[serde(default)]
+    pub received_amount: String,
+    pub min_received_amount: Option<String>,
+    pub fee: Option<String>,
+    pub net: Option<String>,
+    pub deposit_id: Option<String>,
+    pub tx_hash: Option<String>,
+    pub deposit_amount: Option<String>,
+    pub reason: Option<String>,
+    pub dispute_id: Option<String>,
+    pub outcome: Option<String>,
+    #[serde(default)]
+    pub is_inquiry: bool,
+    #[serde(default)]
+    pub escalated: bool,
+    #[serde(default)]
+    pub corrected: bool,
+    pub payment_method: Option<String>,
+    pub payment_expires_at: Option<String>,
+    #[serde(default)]
+    pub voucher: serde_json::Value,
+    pub settlement_tx: Option<String>,
+    pub settlement_address: Option<String>,
+    pub channel_name: Option<String>,
 }
 
 impl Event {
-    /// dedupe_key is the idempotency key: `event : order_id : refunded_amount`.
-    ///
-    /// The key MUST include refunded_amount. `(event, order_id)` alone is **not unique**:
-    /// a single order can be partially refunded more than once, and each refund fires its
-    /// own payment.refunded. Deduplicating on just that pair drops the second partial
-    /// refund as a "duplicate" and returns 2xx — fluxa then records the delivery as
-    /// successful and never retries. The customer is under-refunded and nothing errors
-    /// anywhere in the chain, which is why this is worth spelling out.
-    ///
-    /// refunded_amount is cumulative and strictly increasing, so it separates a redelivery
-    /// of the same event (same value => deduplicate) from a genuinely new partial refund
-    /// (higher value => process).
-    ///
-    /// payment.succeeded / payment.failed carry no refunded_amount, so for them this
-    /// degrades to the old `(event, order_id)` behaviour, which is correct for those.
-    ///
-    /// In a real integration this belongs in a database unique constraint (a unique index
-    /// on order_id + event + refunded_amount). The in-process HashSet is a demo stand-in.
-    /// See ../../spec/SIGNING.md §3.1.
+    /// Read only after signature verification and decryption. Empty means invalid; production commits this identity and business changes atomically.
     pub fn dedupe_key(&self) -> String {
-        format!(
-            "{}:{}:{}",
-            self.event,
-            self.order_id,
-            self.refunded_amount.as_deref().unwrap_or("")
-        )
+        self.event_id.clone()
     }
 }
 
@@ -460,7 +503,12 @@ impl Event {
 ///
 /// verify_slice is a constant-time, length-safe compare, so a wrong, short or empty
 /// signature is rejected without leaking where the mismatch is.
-pub fn verify_webhook(webhook_secret: &str, timestamp: &str, raw_body: &[u8], provided: &str) -> bool {
+pub fn verify_webhook(
+    webhook_secret: &str,
+    timestamp: &str,
+    raw_body: &[u8],
+    provided: &str,
+) -> bool {
     let mut mac = new_mac(webhook_secret);
     mac.update(timestamp.as_bytes());
     mac.update(b".");

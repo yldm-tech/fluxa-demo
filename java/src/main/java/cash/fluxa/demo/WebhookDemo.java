@@ -26,43 +26,19 @@ public final class WebhookDemo {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
-  // Delivery is at-least-once: the same event can arrive more than once, so processing MUST
-  // be idempotent. The key is dedupeKey() below. In a real integration this belongs in a
-  // database unique constraint (a unique index on order_id + event + refunded_amount); the
-  // in-process Set is a demo stand-in.
+  // Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
   private static final Set<String> PROCESSED = ConcurrentHashMap.newKeySet();
 
   private static final long MAX_SKEW_SECONDS = 300;
   private static final int MAX_BODY_BYTES = 1 << 20;
 
-  /**
-   * dedupeKey is the idempotency key: {@code event : order_id : refunded_amount}.
-   *
-   * <p>The key MUST include refunded_amount. {@code (event, order_id)} alone is <b>not
-   * unique</b>: a single order can be partially refunded more than once, and each refund
-   * fires its own payment.refunded. Deduplicating on just that pair drops the second partial
-   * refund as a "duplicate" and returns 2xx — fluxa then records the delivery as successful
-   * and never retries. The customer is under-refunded and nothing errors anywhere in the
-   * chain.
-   *
-   * <p>refunded_amount is cumulative and strictly increasing, so it separates a redelivery of
-   * the same event (same value → deduplicate) from a genuinely new partial refund (higher
-   * value → process).
-   *
-   * <p>payment.succeeded / payment.failed carry no refunded_amount, so for them the key
-   * degrades to {@code (event, order_id)}, which is correct for those events.
-   *
-   * <p>In a real integration this belongs in a database unique constraint (a unique index on
-   * order_id + event + refunded_amount). See ../spec/SIGNING.md §3.1.
-   */
+  // Read only from a verified, decrypted body; empty means invalid.
   static String dedupeKey(JsonNode evt) {
-    return field(evt, "event") + ":" + field(evt, "order_id") + ":" + field(evt, "refunded_amount");
+    JsonNode id = evt == null ? null : evt.path("event_id");
+    return id != null && id.isTextual() ? id.textValue() : "";
   }
 
-  // field reads one field as text. A missing field yields Jackson's MissingNode, whose asText()
-  // is "" — so an absent refunded_amount degrades the key without an NPE. An explicit JSON null
-  // is folded to "" too: NullNode.asText() would otherwise return the literal string "null".
-  // Amounts stay decimal strings and never touch a double.
+  // Missing values render as empty text; amounts remain decimal strings.
   private static String field(JsonNode evt, String name) {
     JsonNode v = evt.path(name);
     return v.isMissingNode() || v.isNull() ? "" : v.asText();
@@ -148,8 +124,12 @@ public final class WebhookDemo {
         return;
       }
 
-      String name = evt.path("event").asText();
       String key = dedupeKey(evt);
+      if (key.isEmpty()) {
+        respond(exchange, 400, "missing or invalid event_id");
+        return;
+      }
+      String name = evt.path("event").asText();
       if (!PROCESSED.add(key)) {
         // Redelivery: already processed, so return 2xx without shipping goods or crediting
         // the account a second time.
@@ -177,11 +157,26 @@ public final class WebhookDemo {
 
       switch (name) {
         case "payment.succeeded" -> {
-          if (!isTest) {
+          if (!isTest && evt.path("settle_on_received").asBoolean()) {
+            System.out.println("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. " + field(evt, "received_amount"));
+          } else if (!isTest) {
             System.out.println(
                 "  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)");
           }
         }
+        case "payment.additional_received" -> {
+          if (!isTest) System.out.println("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. " + field(evt, "received_amount"));
+        }
+        case "payment.pending" -> System.out.println("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.");
+        case "order.created" -> System.out.println("  → Record the pending order; do not fulfill.");
+        case "order.expired" -> System.out.println("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+        case "order.canceled" -> System.out.println("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+        case "payment.dispute_created" -> System.out.println("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.");
+        case "payment.dispute_closed" -> System.out.println("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.");
+        case "settlement.completed" -> System.out.println("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.");
+        case "subscription.charged" -> System.out.println("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.");
+        case "subscription.payment_failed" -> System.out.println("  → Record the failed subscription payment; reconcile subscription state.");
+        case "subscription.completed" -> System.out.println("  → Record subscription completion; do not fulfill again.");
         case "payment.failed" -> System.out.println("  → Mark the order failed here");
         case "payment.refunded" -> {
           // refunded_amount is the CUMULATIVE refunded total, not this event's refund;

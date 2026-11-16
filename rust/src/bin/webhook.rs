@@ -23,14 +23,7 @@ fn main() {
     let server =
         Server::http(&addr).unwrap_or_else(|e| fatal(format!("failed to listen on {addr}: {e}")));
 
-    // Delivery is at-least-once: the same event can arrive more than once, so processing
-    // MUST be idempotent.
-    // The key is Event::dedupe_key() (event : order_id : refunded_amount). See the comment
-    // there for why refunded_amount has to be in it — keying on just (event, order_id)
-    // silently drops the second partial refund.
-    // In a real integration this belongs in a database unique constraint (a unique index on
-    // order_id + event + refunded_amount); the in-process HashSet is a demo stand-in.
-    // This loop handles requests one at a time on a single thread, so no lock is needed.
+    // Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
     let mut processed: HashSet<String> = HashSet::new();
 
     println!(
@@ -123,6 +116,10 @@ fn handle(mut request: Request, secret: &str, processed: &mut HashSet<String>) {
     };
 
     let key = evt.dedupe_key();
+    if key.is_empty() {
+        respond(request, 400, "missing or invalid event_id");
+        return;
+    }
     if !processed.insert(key.clone()) {
         // Redelivery: already processed, so return 2xx immediately without shipping goods
         // or crediting the account a second time.
@@ -147,12 +144,27 @@ fn handle(mut request: Request, secret: &str, processed: &mut HashSet<String>) {
 
     match evt.event.as_str() {
         "payment.succeeded" => {
-            if !evt.is_test {
+            if !evt.is_test && evt.settle_on_received {
+                println!("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. {}", evt.received_amount);
+            } else if !evt.is_test {
                 println!(
                     "  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)"
                 );
             }
         }
+        "payment.additional_received" => {
+            if !evt.is_test { println!("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. {}", evt.received_amount); }
+        }
+        "payment.pending" => println!("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill."),
+        "order.created" => println!("  → Record the pending order; do not fulfill."),
+        "order.expired" => println!("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events."),
+        "order.canceled" => println!("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events."),
+        "payment.dispute_created" => println!("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here."),
+        "payment.dispute_closed" => println!("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here."),
+        "settlement.completed" => println!("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again."),
+        "subscription.charged" => println!("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded."),
+        "subscription.payment_failed" => println!("  → Record the failed subscription payment; reconcile subscription state."),
+        "subscription.completed" => println!("  → Record subscription completion; do not fulfill again."),
         "payment.failed" => println!("  → Mark the order failed here"),
         "payment.refunded" => {
             // refunded_amount is the CUMULATIVE refunded total, not this event's refund.

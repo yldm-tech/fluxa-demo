@@ -16,6 +16,13 @@ final class Fluxa
     // one between signing and sending changes the body hash and the signature dies.
     private const JSON_FLAGS = JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR;
 
+    // Read only from a verified, decrypted event. Empty means invalid; never use an unsigned header as a fallback.
+    public static function dedupeKey(mixed $evt): string
+    {
+        $value = is_array($evt) ? ($evt['event_id'] ?? null) : null;
+        return is_string($value) ? $value : '';
+    }
+
     public function __construct(
         private readonly string $baseUrl,
         private readonly string $keyId,

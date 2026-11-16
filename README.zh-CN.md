@@ -1,11 +1,8 @@
 # fluxa 支付对接 demo
 
-[![CI](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml)
-[![X](https://img.shields.io/badge/X-%40suzukaze__haduki-000000?logo=x&logoColor=white)](https://x.com/suzukaze_haduki)
-[![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/houko)
+[![CI](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml/badge.svg)](https://github.com/yldm-tech/fluxa-demo/actions/workflows/ci.yml) [![X](https://img.shields.io/badge/X-%40suzukaze__haduki-000000?logo=x&logoColor=white)](https://x.com/suzukaze_haduki) [![GitHub Sponsors](https://img.shields.io/badge/GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/houko)
 
-[fluxa](https://pay.fluxa.cash) 商户 API 的多语言接入示例，共 8 种语言。
-把 `.env.example` 复制成 `.env`，填三个密钥，就能跑。
+[fluxa](https://pay.fluxa.cash) 商户 API 的多语言接入示例，共 8 种语言。 把 `.env.example` 复制成 `.env`，填三个密钥，就能跑。
 
 **English: [README.md](README.md)** · 用 AI 接入？把 [AGENTS.md](AGENTS.md) 丢给它。
 
@@ -24,9 +21,7 @@ cp .env.example .env
 $EDITOR .env    # 填 FLUXA_KEY_ID、FLUXA_SECRET、FLUXA_WEBHOOK_SECRET
 ```
 
-这三个值从商户门户拿：**https://pay.fluxa.cash/portal** → Developers → API Keys → New Key。
-建议先选 **Test** 模式：测试订单不动真钱，但**照样推 webhook**，整条链路都能安全跑通。
-secret 只显示一次。
+API Key 和 API secret 从商户门户 **https://pay.fluxa.cash/portal** → Developers → API Keys → New Key 获取；独立的 webhook secret 从 Developers → Webhooks 获取。运营设置的初始密码登录有权限限制，需先通过账号邮箱的设置密码链接设置自己的密码，再自行创建 API Key。 建议先选 **Test** 模式：测试订单不动真钱，但**照样推 webhook**，整条链路都能安全跑通。 secret 只显示一次。
 
 然后挑一种语言：
 
@@ -43,9 +38,7 @@ secret 只显示一次。
 
 ※ **仅加密 webhook 需要**（`WEBHOOK_ENCRYPTION`，默认关闭）。签名、下单、明文回调都不受影响：
 > - **Python** 需 `pip install cryptography`——标准库没有 AES。
-> - **Ruby** 需链接 **OpenSSL** 的 Ruby（版本不限）。macOS 系统自带的 ruby 链接的是
->   **LibreSSL**，它完全不支持 AES-256-GCM。这与 Ruby 版本无关：同一份代码在
->   `ruby:2.6-slim`（2.6 + OpenSSL）上全过。用 rbenv/homebrew 装的 ruby 或 `ruby:3.3` 镜像即可。
+> - **Ruby** 需链接 **OpenSSL** 的 Ruby（版本不限）。macOS 系统自带的 ruby 链接的是 **LibreSSL**，它完全不支持 AES-256-GCM。这与 Ruby 版本无关：同一份代码在 `ruby:2.6-slim`（2.6 + OpenSSL）上全过。用 rbenv/homebrew 装的 ruby 或 `ruby:3.3` 镜像即可。
 
 各语言目录下有自己的 README，含详细说明和「本机没装该运行时」时的 Docker 跑法。
 
@@ -60,8 +53,7 @@ secret 只显示一次。
 
 ## 签名契约
 
-完整规范：**[`spec/SIGNING.md`](spec/SIGNING.md)**。已知答案向量：**[`spec/vectors.json`](spec/vectors.json)**，
-由 fluxa 服务端真实代码生成。
+完整规范：**[`spec/SIGNING.md`](spec/SIGNING.md)**。已知答案向量：**[`spec/vectors.json`](spec/vectors.json)**， 由 fluxa 服务端真实代码生成。
 
 请求带三个头 `X-Api-Key`、`X-Timestamp`、`X-Signature`，其中
 
@@ -81,10 +73,8 @@ SHA256_HEX(BODY)
 
 > **最费时间的两个错误**
 >
-> 1. **无 query 时把那个空行省掉**。变成 4 行后 HMAC 完全不同，**所有**请求都会
->    `401 bad_signature`，不只是带 query 的。
-> 2. **签名的字节和发送的字节不是同一份**。body 只序列化一次，签它、发它。
->    序列化两次会改变键顺序或空格，签名就废了。
+> 1. **无 query 时把那个空行省掉**。变成 4 行后 HMAC 完全不同，**所有**请求都会 `401 bad_signature`，不只是带 query 的。
+> 2. **签名的字节和发送的字节不是同一份**。body 只序列化一次，签它、发它。 序列化两次会改变键顺序或空格，签名就废了。
 
 ### Webhook 验签
 
@@ -92,40 +82,25 @@ SHA256_HEX(BODY)
 X-Fluxa-Signature = hex(HMAC_SHA256(webhook_secret, "<X-Fluxa-Timestamp>.<原始body>"))
 ```
 
-必须用**原始接收字节**验签（反序列化再序列化的结果对不上），用常量时间比较，并校验时间戳新鲜度。
-开启加密时 body 是 AES-256-GCM 信封——**先验签、再解密**，密钥是 `SHA256(webhook_secret)`。
+必须用**原始接收字节**验签（反序列化再序列化的结果对不上），用常量时间比较，并校验时间戳新鲜度。 开启加密时 body 是 AES-256-GCM 信封——**先验签、再解密**，密钥是 `SHA256(webhook_secret)`。
 
-> **部分退款做错会赔钱。** 一笔订单可以被多次部分退款，每次都推一个 `payment.refunded`。
-> 两个坑，都是静默的：
->
-> 1. `(event, order_id)` **不是**唯一的事件标识。用它去重，第二笔部分退款会被当成「重复」
->    丢弃并返回 `2xx`——fluxa 认为投递成功、永不重试。幂等键要用
->    `(event, order_id, refunded_amount)`。
-> 2. `refunded_amount` 是**累计**值，而投递**无序**——携带 `30` 的重试事件可能晚于携带 `50` 的
->    到达。所以要把已退总额推进到 `max(已记录, refunded_amount)`：累加会在重投时多退，
->    直接赋值会把 50 退回 30。
->
-> 详细示例见 [`spec/SIGNING.md` §3.1](spec/SIGNING.md)。
+按验签后正文的 `event_id` 去重，重试和手工重投保留同一个 ID。`X-Fluxa-Event-Id` 仅用于追踪，不能替代验签后的正文。数据库中将事件唯一键和业务变更在同一事务里提交。事件仍可能乱序，退款累计额按 `max(已记录, refunded_amount)` 推进；按实收结算的累计入账按 `max(已记录, received_amount)` 推进。示例的内存/文件去重只用于演示，不能直接作为生产账本。完整契约见 [签名与事件规范](spec/SIGNING.zh-CN.md)。
 
 ---
 
 ## 为什么每种语言都带一个 vectors 测试
 
-跨语言移植 HMAC 最典型的失败是**静默不一致**：代码能跑、签名也算得出来，直到服务端拒绝才发现。
-常见的坑：
+跨语言移植 HMAC 最典型的失败是**静默不一致**：代码能跑、签名也算得出来，直到服务端拒绝才发现。 常见的坑：
 
 - 无 query 时漏掉 canonical 的空行（4 行 vs 5 行）
-- 用语言默认比较器排序 query——C# 默认是 **culture-sensitive**、JS 和 Java 是 **UTF-16**，
-  而服务端按 **UTF-8 字节序**
+- 用语言默认比较器排序 query——C# 默认是 **culture-sensitive**、JS 和 Java 是 **UTF-16**， 而服务端按 **UTF-8 字节序**
 - 签名一份字节、发送另一份（序列化了两次）
 - 把金额解析成浮点。`9.99` 单看没问题，但误差会累积——累加 100 次得到 `999.0000000000007` 而非 `999`
 - webhook 按 `(event, order_id)` 去重，丢掉部分退款
 
-`spec/vectors.json` 由 fluxa 真实签名代码生成，每种语言的测试都逐字节复现它。
-**这就是判定移植正确的唯一标准**——不需要跑着的服务器，也不依赖任何人对文档的理解。
+`spec/vectors.json` 由 fluxa 真实签名代码生成，每种语言的测试都逐字节复现它。 **这就是判定移植正确的唯一标准**——不需要跑着的服务器，也不依赖任何人对文档的理解。
 
-这些测试做过变异检验：把 canonical 改成 4 行、或换成 UTF-16 比较器，它们会立刻失败。
-详见 [`spec/README.md`](spec/README.md)。
+这些测试做过变异检验：把 canonical 改成 4 行、或换成 UTF-16 比较器，它们会立刻失败。 详见 [`spec/README.md`](spec/README.md)。
 
 ---
 
@@ -145,24 +120,38 @@ npm run webhook
 
 本地接收服务公网不可达，用内网穿透（ngrok、Cloudflare Tunnel）拿一个公网地址登记为回调地址。
 
+### 当前下单可选字段
+
+基础托管收银台请求继续兼容。可在各语言的下单对象中添加以下字段，Go / Rust 已提供对应类型：
+
+| 字段 | 契约 |
+| --- | --- |
+| `network` | 未传 `channel` 时按网络路由加密货币收款；显式渠道优先。 |
+| `method` | 指定渠道支持的子方式，例如 Stripe 方式；不支持的组合可能回退到渠道提供的方式，不保证对任意服务商生效。 |
+| `presentation` | 默认 `redirect`，也可设为 `embedded`；嵌入式 Stripe 返回 Payment Element 所需的 `client_secret` 和 `publishable_key`。 |
+| `settle_on_received` | 可选布尔值，仅链上直清支持；普通法币或连连订单不传。 |
+| `min_received_amount` | 按实收结算的可选最低累计实收，十进制字符串，必须大于零且不超过 `amount`；省略时由平台按渠道及费率确定。 |
+| `metadata` | 任意 JSON 对象；链上收款建议传稳定、不含个人信息的 `customer` ID，以复用该付款人已分配的地址。 |
+
+幂等重放时，省略结算/呈现选项沿用原订单，显式冲突返回 `409 idempotency_mismatch`。过期、取消、失败订单重放返回 `instruction.type: none`，不能把 `payment.channel_ref` 当可付款地址展示。`409 order_closed_during_charge` 或 `stripe_account_changed_during_charge` 后使用新的 `merchant_order_id` 建单。未支付订单可调用签名的 `POST /api/v1/orders/{id}/cancel` 取消；查询订单还返回 `checkout_url`、支付记录和结算记录。密钥按 Test / Live 隔离，查询或退款必须使用与订单一致的模式。
+
+### 连连 / 微信支付接入
+
+外部商户使用自己的 Fluxa API Key 和 webhook secret 对接 Fluxa，无需平台的连连 RSA 密钥。先完成商户开户并开放相应法币收款权限，用该商户密钥签名调用 `GET /api/v1/channels`，选择返回的已启用连连渠道 code。`lianlian_wechat` 这类名称由运营配置，不是固定常量，不要照抄其他商户的配置。
+
+将 `FLUXA_CHANNEL` 设为该 code，正式渠道使用对应 Live 密钥，并选择渠道支持的币种和金额。把下单入口里的示例成功/取消跳转地址替换为自己的站点，保持默认跳转收银台，不传 `settle_on_received`。将付款人引导到 `instruction.redirect_url`，以验签回调确认支付。配置自己的公网回调地址与 webhook secret。先用 Test 密钥和 `mock` 验证集成；mock 不会验证连连的真实支付网络。
+
 ### 排障
 
-**`401 bad_signature`** —— canonical 串不对。检查那个空的第三行、检查签名的字节是否与发送的一致、
-检查 `X-Timestamp` 是否与签名时用的一致。先跑本语言的测试：向量过了就说明签名实现没问题，
-问题在别处。
+**`401 bad_signature`** —— canonical 串不对。检查那个空的第三行、检查签名的字节是否与发送的一致、 检查 `X-Timestamp` 是否与签名时用的一致。先跑本语言的测试：向量过了就说明签名实现没问题， 问题在别处。
 
-**`400 channel_environment_mismatch`** —— `FLUXA_CHANNEL` 和密钥模式不匹配。Test 密钥要配
-test 环境的渠道（如 `mock`），Live 密钥要配 live 的。**这不是签名问题**。
-用签名过的 `GET /api/v1/channels` 看你的账号能用哪些。
+**`400 channel_environment_mismatch`** —— `FLUXA_CHANNEL` 和密钥模式不匹配。Test 密钥要配 test 环境的渠道（如 `mock`），Live 密钥要配 live 的。**这不是签名问题**。 用签名过的 `GET /api/v1/channels` 看你的账号能用哪些。
 
-**`401 replayed_request`** —— 验证过的签名在时钟偏移窗口内一次性使用。同一秒发两个完全相同的
-请求会算出相同签名。换个时间戳或改一下 body。
+**`401 replayed_request`** —— 验证过的签名在时钟偏移窗口内一次性使用。同一秒发两个完全相同的 请求会算出相同签名。换个时间戳或改一下 body。
 
-**收不到 webhook** —— 确认回调地址公网可达且已在门户登记，且同一时间只有一个语言的接收端
-占用 `WEBHOOK_PORT`。
+**收不到 webhook** —— 确认回调地址公网可达且已在门户登记，且同一时间只有一个语言的接收端 占用 `WEBHOOK_PORT`。
 
-**在 Docker 里跑 demo** —— 容器里的 `localhost` 是容器自己。指向托管 API：
-`-e FLUXA_BASE_URL=https://pay.fluxa.cash`。
+**在 Docker 里跑 demo** —— 容器里的 `localhost` 是容器自己。指向托管 API： `-e FLUXA_BASE_URL=https://pay.fluxa.cash`。
 
 ---
 

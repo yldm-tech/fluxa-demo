@@ -58,9 +58,9 @@ sel() { [ "${#TARGETS[@]}" -eq 0 ] || want "$1"; }
 # ---- node ----
 if sel node; then
   if have node; then run_one node "local node $(node --version)" \
-       env -C "$ROOT/node" node --test "test/*.test.js"
+       env -C "$ROOT/node" node --test
   elif docker_ok; then run_one node "docker node:22-slim" \
-       docker run --rm -v "$ROOT":/app -w /app/node node:22-slim node --test "test/*.test.js"
+       docker run --rm -v "$ROOT":/app -w /app/node node:22-slim node --test
   else skip node "no node and no usable docker"; fi
 fi
 

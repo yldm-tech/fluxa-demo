@@ -1,8 +1,6 @@
 # fluxa signing contract
 
-This is the authoritative reference for every demo in this repo. It is pinned by
-[`vectors.json`](./vectors.json) — known-answer vectors generated from fluxa's actual
-server-side signing code. If an implementation disagrees with this document, the vectors decide.
+This is the authoritative reference for every demo in this repo. It is pinned by [`vectors.json`](./vectors.json) — known-answer vectors generated from fluxa's actual server-side signing code. If an implementation disagrees with this document, the vectors decide.
 
 Chinese version: [SIGNING.zh-CN.md](./SIGNING.zh-CN.md)
 
@@ -30,11 +28,9 @@ SHA256_HEX(BODY)
 
 - `METHOD` — uppercased (`post` → `POST`)
 - `PATH` — no host, no query, e.g. `/api/v1/charges`
-- `CANONICAL_QUERY` — see below. **With no query this line is the empty string, but the line is
-  still there** — the canonical carries an empty third line
+- `CANONICAL_QUERY` — see below. **With no query this line is the empty string, but the line is still there** — the canonical carries an empty third line
 - `TIMESTAMP` — byte-identical to the `X-Timestamp` header
-- `SHA256_HEX(BODY)` — SHA-256 of the raw request body bytes, lowercase hex. An empty body hashes
-  the empty string (always `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
+- `SHA256_HEX(BODY)` — SHA-256 of the raw request body bytes, lowercase hex. An empty body hashes the empty string (always `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`)
 
 > **The most common mistake: dropping the third line when there is no query.** That yields a
 > 4-line string whose HMAC is completely different, and the server rejects it with
@@ -58,23 +54,16 @@ Split the raw query on `&`, sort the fragments in **UTF-8 byte order**, join wit
 | `limit=10&status=paid` | `limit=10&status=paid` |
 | `z=1&z=2&a=3` | `a=3&z=1&z=2` |
 
-Sort whole `key=value` fragments (not by key alone). Do not percent-decode. Keep duplicate keys.
-This makes the signature independent of parameter order while still preventing any parameter from
-being tampered with under a captured signature.
+Sort whole `key=value` fragments (not by key alone). Do not percent-decode. Keep duplicate keys. This makes the signature independent of parameter order while still preventing any parameter from being tampered with under a captured signature.
 
 Two portability traps, both real:
 
-- **Sort by UTF-8 bytes.** For ASCII/percent-encoded queries — all real traffic — this matches
-  most languages' default string sort. It diverges for raw non-ASCII above U+FFFF, and C#'s
-  default sort is culture-sensitive, which is wrong even for ASCII in some locales. See
-  [`README.md`](./README.md) for the correct comparator per language.
-- **Keep trailing empty fragments when splitting.** Ruby's default `split` and Java's one-arg
-  `String.split` drop them; both need an explicit `-1` limit to match the server.
+- **Sort by UTF-8 bytes.** For ASCII/percent-encoded queries — all real traffic — this matches most languages' default string sort. It diverges for raw non-ASCII above U+FFFF, and C#'s default sort is culture-sensitive, which is wrong even for ASCII in some locales. See [`README.md`](./README.md) for the correct comparator per language.
+- **Keep trailing empty fragments when splitting.** Ruby's default `split` and Java's one-arg `String.split` drop them; both need an explicit `-1` limit to match the server.
 
 ### Sign the exact bytes you send
 
-Serialize the body once, then sign and send **that same byte string**. Do not re-serialize after
-signing — any difference in key order or whitespace invalidates the signature.
+Serialize the body once, then sign and send **that same byte string**. Do not re-serialize after signing — any difference in key order or whitespace invalidates the signature.
 
 ---
 
@@ -84,7 +73,8 @@ fluxa POSTs an event to your configured callback URL when an order changes state
 
 | Header | Value |
 | --- | --- |
-| `X-Fluxa-Event` | `payment.succeeded` / `payment.failed` / `payment.refunded` |
+| `X-Fluxa-Event` | Event type; see §3.2 |
+| `X-Fluxa-Event-Id` | Same as body `event_id`; use the authenticated body value |
 | `X-Fluxa-Timestamp` | Unix seconds |
 | `X-Fluxa-Signature` | `hex(HMAC_SHA256(webhook_secret, "<timestamp>.<raw body>"))` |
 | `X-Fluxa-Encryption` | present only when payload encryption is on; value `A256GCM` |
@@ -98,16 +88,11 @@ reject unless constant_time_equals(expected, X-Fluxa-Signature)
 
 Rules:
 
-- **Verify against the raw received bytes.** Deserializing and re-serializing changes the bytes and
-  the signature will not match. Frameworks that auto-parse JSON (Express's `express.json()`,
-  and friends) will break this unless you capture the raw body.
+- **Verify against the raw received bytes.** Deserializing and re-serializing changes the bytes and the signature will not match. Frameworks that auto-parse JSON (Express's `express.json()`, and friends) will break this unless you capture the raw body.
 - Use a **constant-time** comparison.
 - Check `X-Fluxa-Timestamp` freshness (±5 minutes is a reasonable window) to limit replay.
-- Delivery is **at-least-once** — the same event can arrive more than once. Handle it idempotently.
-  **Key on `(event, order_id, refunded_amount)`, not `(event, order_id)`** — the latter is not
-  unique and will drop partial refunds. See §3.1.
-- Failures are retried with exponential backoff (up to 8 attempts). Return `2xx` quickly; anything
-  else counts as a failure.
+- Delivery is **at-least-once**. Deduplicate by authenticated body `event_id`; see §3.1.
+- Failures are retried with exponential backoff (up to 8 attempts). Return `2xx` quickly; anything else counts as a failure.
 
 ### The encrypted envelope (when payload encryption is enabled)
 
@@ -147,6 +132,7 @@ The AAD is empty.
 
 ```json
 {
+  "event_id": "whk_example_paid",
   "event": "payment.succeeded",
   "order_id": "ord_…",
   "merchant_order_id": "order-1",
@@ -155,65 +141,52 @@ The AAD is empty.
   "status": "paid",
   "channel": "mock",
   "channel_name": "Mock (test)",
-  "is_test": false,
-  "refunded_amount": "0"
+  "is_test": true
 }
 ```
 
 | Field | Meaning |
 | --- | --- |
-| `event` | `payment.succeeded` / `payment.failed` / `payment.refunded` |
+| `event` | Event type; see §3.2 |
+| `event_id` | Opaque event identity; stable across retries, different across events |
 | `order_id` | fluxa's order id, `ord_<ULID>` |
 | `merchant_order_id` | the idempotency key you supplied at charge time |
 | `amount` | the **order total** — not the refunded amount |
 | `currency` | currency code |
-| `status` | `paid` / `failed` / `refunded` / **`partially_refunded`** |
+| `status` | `pending` / `paid` / `failed` / `refunded` / `partially_refunded` / `expired` / `canceled` |
 | `channel` | channel code |
 | `channel_name` | channel display name |
 | `is_test` | **`true` = a test order with no real money — do not ship goods.** Test-key orders do fire webhooks, so you can exercise your integration |
 | `refunded_amount` | **cumulative** refunded total; **present only once something has been refunded**. See §3.1 |
 
-Amounts are always **decimal strings**. Never parse them as floats — the server stores
-`numeric(38,18)` and uses decimal arithmetic. Parsing `9.99` as a double does not visibly corrupt it — but the nearest double is `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent that no one can find.
+Amounts are always **decimal strings**. Never parse them as floats — the server stores `numeric(38,18)` and uses decimal arithmetic. Parsing `9.99` as a double does not visibly corrupt it — but the nearest double is `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent that no one can find.
 
-### 3.1 Partial refunds — where the money goes missing
+### 3.1 Event identity and cumulative refunds
 
-A single order can be **partially refunded more than once**, and each refund fires its own
-`payment.refunded`. Therefore:
+Use the nonempty string `event_id` from the verified, decrypted body as the unique event key. `X-Fluxa-Event-Id` carries the same value for tracing, but headers are not signed; never trust a header-only ID. Retries and manual redeliveries keep the same ID; distinct events have different IDs even when their order, type and amounts match. The demos return 400 for a missing or malformed body ID instead of silently reverting to a lossy composite key. The older `(event, order_id, refunded_amount)` key is not the current contract.
 
-> **`(event, order_id)` is not unique.** Deduplicating on it drops the second partial refund as a
-> "duplicate", returns `2xx`, and fluxa records the delivery as successful and never retries. The
-> customer is under-refunded and nothing errors anywhere in the chain.
+Identity does not establish ordering. For a 1000 order refunded first by 30 and then by 20, the two events carry cumulative `refunded_amount` values `30.00` and `50.00`, and different IDs. Advance the stored total to `max(recorded, refunded_amount)` using decimal arithmetic: adding duplicates refunds; blindly assigning lets a late `30.00` regress `50.00`. Use the positive difference for accounting, not the order's `amount`. Event deduplication and cumulative-state updates belong in the same database transaction.
 
-Refund 30 then 20 against a 1000 order and you receive two events:
+### 3.2 Current events and ordering
 
-| # | `amount` (order total) | `refunded_amount` (cumulative) | `status` |
-| --- | --- | --- | --- |
-| 1 | `1000.00` | `30.00` | `partially_refunded` |
-| 2 | `1000.00` | `50.00` | `partially_refunded` |
+| Event | Handling |
+| --- | --- |
+| `payment.succeeded` | Fulfill once for an exact-amount order. For `settle_on_received: true`, use cumulative `received_amount` instead of the quoted `amount`. |
+| `payment.additional_received` | Additional confirmed funds on an order using settlement by received amount. Atomically advance credited gross to `max(recorded, received_amount)` and apply only the positive difference. Do not add `deposit_amount` separately. This event can arrive before `payment.succeeded`. |
+| `payment.failed` | Reconcile the failed order; never regress a newer paid/refunded state because an older delivery arrived late. |
+| `payment.refunded` | Advance cumulative `refunded_amount` with decimal max. `reason` distinguishes `refund` from `dispute`. |
+| `payment.pending` | Explicit subscription required. Display `payment_method`, `payment_expires_at` and `voucher` only while the order is pending; it is not proof of payment. Later voucher updates have different event IDs. |
+| `payment.dispute_created` / `payment.dispute_closed` | Explicit subscription required. Track by `dispute_id`, preserving `is_inquiry`, `escalated`, `outcome` and `corrected`. A closed event may arrive first; a corrected `won` supersedes an earlier `lost`. These events describe disputes, not a balance change; withdrawn funds are reported through `payment.refunded`. |
+| `order.created` / `order.expired` / `order.canceled` | Explicit subscription required. Record creation; on closure hide checkout links, embedded forms and deposit instructions. A late creation must not reopen a closed order. |
+| `settlement.completed` | Merchant settlement receipt (`settlement_tx`, `settlement_address`, `chain`, `asset`, `fee`); `amount` is the settled net. Do not fulfill or credit the customer again. |
+| `subscription.charged` / `subscription.payment_failed` / `subscription.completed` | Subscription lifecycle notifications; do not duplicate fulfillment already performed for the payment event. |
 
-Two rules follow:
+An empty subscription list includes ordinary payment/settlement/subscription events, but excludes the opt-in events above. With a nonempty allow-list, explicitly include every event needed, including `payment.additional_received` when using settlement by received amount. Unknown event types should be logged and acknowledged without fulfillment; non-payment payloads can omit order fields.
 
-1. **Put `refunded_amount` in the idempotency key**: `(event, order_id, refunded_amount)`. The
-   values are cumulative and strictly increasing, so the key separates a redelivery of the same
-   event (same value → deduplicate) from a genuinely new partial refund (higher value → process).
-   Build your database unique index on those three columns too.
-2. **Advance your recorded total to `max(recorded, refunded_amount)`.** Never add, and never
-   assign blindly:
-   - **Adding** over-refunds on a redelivery.
-   - **Assigning** regresses on a reorder. At-least-once says nothing about *order*, and deliveries
-     are not serialized per order — a failed delivery is retried after a backoff, so the event
-     carrying `30` can land *after* the one carrying `50`. A late `30` is not a duplicate — it is a
-     different key, so it is correctly processed — and assigning would drop your total from 50 back
-     to 30.
-   - **Taking the max** is idempotent *and* order-safe, which is why it is the only correct rule.
+Optional payment fields include `paid_at`; `settle_on_received`, `min_received_amount`, `received_amount`; `deposit_id`, `tx_hash`, `deposit_amount` on additional receipts; and `fee`/`net` on settled live payment snapshots. `fee` and `net` are snapshots, not increments; `net` can be negative after a direct-settlement refund. Do not apply max to `fee` or `net`, as refunds can decrease them. Read the current order when reconciling unordered snapshots.
 
-   Compare the values as decimals, not floats and not strings — `"9.90" > "10.00"` is true
-   lexicographically.
+### 3.3 Production processing
 
-   And do not compute a refund from `amount`: that reads "1 refunded on a 1000 order" as
-   "1000 refunded".
+The receivers log the business action and use local demo stores (PHP uses file markers); they are not a durable ledger. In production, verify → decrypt → validate `event_id` → begin a database transaction → insert the unique event ID and apply the order transition/cumulative delta → commit → return 2xx. A duplicate committed ID returns 2xx without applying the action again. On failure, roll back both writes and return a failure so the event is retried. For asynchronous work, persist the event durably before acknowledging it. Never claim an event permanently before business changes succeed.
 
-There is no separate delivery-id header to key on (fluxa sends only `X-Fluxa-Event`,
-`X-Fluxa-Timestamp`, `X-Fluxa-Signature`, and `X-Fluxa-Encryption`), so the cumulative-state
-semantics above are the only correct approach.
+Check `is_test` before any fulfillment or real balance mutation. A successful browser return URL is not payment confirmation: use a verified event or a signed order query. Event IDs are opaque strings, not timestamps or sequence numbers.

@@ -1,15 +1,16 @@
 # fluxa payment integration demo — Java 17 (Jackson only)
 
-A merchant integration against the fluxa API using the Java standard library: HMAC-signed
-charges, order lookup, and webhook receiving with signature verification.
+A merchant integration against the fluxa API using the Java standard library: HMAC-signed charges, order lookup, and webhook receiving with signature verification.
 
-The only runtime dependency is Jackson, and only for JSON. HTTP uses the built-in
-`java.net.http.HttpClient`, signing and decryption use `javax.crypto`, and the webhook
-receiver uses the JDK's own `com.sun.net.httpserver.HttpServer`. No Spring, no OkHttp.
+The only runtime dependency is Jackson, and only for JSON. HTTP uses the built-in `java.net.http.HttpClient`, signing and decryption use `javax.crypto`, and the webhook receiver uses the JDK's own `com.sun.net.httpserver.HttpServer`. No Spring, no OkHttp.
 
-The signing contract is [`../spec/SIGNING.md`](../spec/SIGNING.md), pinned by
-[`../spec/vectors.json`](../spec/vectors.json) — known-answer vectors generated from fluxa's
-actual server-side signing code.
+The signing contract is [`../spec/SIGNING.md`](../spec/SIGNING.md), pinned by [`../spec/vectors.json`](../spec/vectors.json) — known-answer vectors generated from fluxa's actual server-side signing code.
+
+## Current API contract
+
+Use `event_id` from the verified, decrypted body for deduplication, never an unsigned header or an order/amount composite. Missing or malformed IDs are rejected. Production must commit the unique ID and business changes in the same transaction. The receiver prints lifecycle guidance; its local duplicate store is demonstration-only. All eight suites exercise the shared [event fixtures](../spec/events.json), while the original signing vectors remain unchanged.
+
+Get the API key/secret from Developers → API Keys and the separate webhook secret from Developers → Webhooks. A support-set initial password must first be replaced through the account-email link in Settings → Security before the merchant can create API keys. See the root [current charge options](../README.md#current-charge-options) and [LianLian onboarding](../README.md#lianlian--wechat-pay). Full event/ordering/transaction rules are in [SIGNING.md §3](../spec/SIGNING.md#3-the-event-body).
 
 ## Prerequisites
 
@@ -22,13 +23,9 @@ actual server-side signing code.
   $EDITOR .env    # fill in FLUXA_KEY_ID / FLUXA_SECRET / FLUXA_WEBHOOK_SECRET
   ```
 
-  Get those from the merchant portal at **https://pay.fluxa.cash/portal** → Developers →
-  API Keys → New Key. Choose **Test** mode to start: test orders move no real money but still
-  fire webhooks, so the whole integration is exercisable safely. The secret is shown once.
+Get those from the merchant portal at **https://pay.fluxa.cash/portal** → Developers → API Keys → New Key. Choose **Test** mode to start: test orders move no real money but still fire webhooks, so the whole integration is exercisable safely. The secret is shown once.
 
-  Real environment variables take precedence over `.env`, so
-  `FLUXA_CHANNEL=stripe mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.ChargeDemo`
-  overrides it for a single run.
+Real environment variables take precedence over `.env`, so `FLUXA_CHANNEL=stripe mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.ChargeDemo` overrides it for a single run.
 
 ## Running
 
@@ -45,13 +42,9 @@ mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.ChargeDemo
 mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.ChargeDemo -Dexec.args="my-order-1"
 ```
 
-With no argument the `merchant_order_id` is generated; you can also supply your own. It is the
-idempotency key, so re-sending the same value returns the same order rather than creating a
-second charge.
+With no argument the `merchant_order_id` is generated; you can also supply your own. It is the idempotency key, so re-sending the same value returns the same order rather than creating a second charge.
 
-Creates a charge → prints the payer instruction based on `instruction.type` (checkout redirect
-/ deposit address / client_secret / nothing to do) → looks the order back up to confirm its
-status.
+Creates a charge → prints the payer instruction based on `instruction.type` (checkout redirect / deposit address / client_secret / nothing to do) → looks the order back up to confirm its status.
 
 ### Receive webhooks
 
@@ -59,10 +52,7 @@ status.
 mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.WebhookDemo
 ```
 
-Listens on `:9000` by default (change `WEBHOOK_PORT` in `.env`). Verify signature → decrypt
-(if enabled) → deduplicate → return 2xx. Your receiver must be reachable from the internet,
-so for local testing expose it with a tunnel (ngrok, Cloudflare Tunnel) and register that URL
-in the portal under Developers → Webhooks.
+Listens on `:9000` by default (change `WEBHOOK_PORT` in `.env`). Verify signature → decrypt (if enabled) → deduplicate → return 2xx. Your receiver must be reachable from the internet, so for local testing expose it with a tunnel (ngrok, Cloudflare Tunnel) and register that URL in the portal under Developers → Webhooks.
 
 ### Test
 
@@ -70,9 +60,7 @@ in the portal under Developers → Webhooks.
 mvn test
 ```
 
-Reproduces `../spec/vectors.json` byte for byte: every request's canonical string and
-signature, every webhook signature (including the tampered-body, wrong-secret and
-empty-signature counter-cases), and encrypted-envelope decryption. No running server needed.
+Reproduces `../spec/vectors.json` byte for byte: every request's canonical string and signature, every webhook signature (including the tampered-body, wrong-secret and empty-signature counter-cases), and encrypted-envelope decryption. No running server needed.
 
 ### Running the built jar directly
 
@@ -90,9 +78,7 @@ docker run --rm -v "$PWD/..:/app" -w /app/java maven:3.9-eclipse-temurin-17 \
   mvn -q compile exec:java -Dexec.mainClass=cash.fluxa.demo.ChargeDemo
 ```
 
-Receiving webhooks needs the port published: `docker run --rm -p 9000:9000 …` (run only one
-language's receiver at a time). A container's `localhost` is the container itself, so point at
-the hosted API with `-e FLUXA_BASE_URL=https://pay.fluxa.cash`.
+Receiving webhooks needs the port published: `docker run --rm -p 9000:9000 …` (run only one language's receiver at a time). A container's `localhost` is the container itself, so point at the hosted API with `-e FLUXA_BASE_URL=https://pay.fluxa.cash`.
 
 ## Files
 
@@ -103,12 +89,11 @@ the hosted API with `-e FLUXA_BASE_URL=https://pay.fluxa.cash`.
 | `src/main/java/cash/fluxa/demo/ChargeDemo.java` | Charge entry point |
 | `src/main/java/cash/fluxa/demo/WebhookDemo.java` | Webhook receiver entry point |
 | `src/test/java/cash/fluxa/demo/VectorsTest.java` | Reproduces `../spec/vectors.json` |
-| `src/test/java/cash/fluxa/demo/DedupeTest.java` | Pins the idempotency key against the partial-refund trap |
+| `src/test/java/cash/fluxa/demo/DedupeTest.java` | Pins event_id identity and cumulative refund ordering |
 
 ## Integrating into your own project
 
-`Fluxa.java` is standalone — it does not depend on `Config.java`, so you can copy it in and
-keep configuring your app however you already do:
+`Fluxa.java` is standalone — it does not depend on `Config.java`, so you can copy it in and keep configuring your app however you already do:
 
 ```java
 Map<String, Object> charge = new LinkedHashMap<>();   // LinkedHashMap: stable key order
@@ -133,60 +118,35 @@ if (!Fluxa.verifyWebhook(webhookSecret, timestampHeader, rawBody, signatureHeade
 }
 JsonNode evt = new ObjectMapper().readTree(rawBody);
 
-// The idempotency key MUST include refunded_amount. (event, order_id) is NOT unique: an
-// order can be partially refunded repeatedly, and deduplicating on that pair silently drops
-// the second refund while returning 2xx. See ../spec/SIGNING.md §3.1.
-String key = evt.path("event").asText() + ":"
-    + evt.path("order_id").asText() + ":"
-    + evt.path("refunded_amount").asText("");
+// For encrypted callbacks, decrypt after verification before reading the event ID; see WebhookDemo for the full receiver.
+JsonNode identity = evt.path("event_id");
+if (!identity.isTextual() || identity.textValue().isEmpty()) {
+    exchange.sendResponseHeaders(400, -1);
+    return;
+}
+String key = identity.textValue();
 // …process idempotently by key, then return 2xx quickly
 ```
 
-On a `payment.refunded`, advance your recorded refunded total to
-**`max(recorded, refunded_amount)`** — never add, and never assign blindly. Adding
-over-refunds on a redelivery; assigning regresses on a reorder, because at-least-once says
-nothing about *order*: deliveries are not serialized per order and a failed delivery is
-retried after a backoff, so the event carrying `30` can land after the one carrying `50`. A
-late `30` is not a duplicate (different key, so it is correctly processed), and assigning
-would drop your total from 50 back to 30. Compare with `BigDecimal` — not `double`, and not
-strings, since `"9.90".compareTo("10.00") > 0`. And check `is_test` before fulfilling
-anything.
+On a `payment.refunded`, advance your recorded refunded total to **`max(recorded, refunded_amount)`** — never add, and never assign blindly. Adding over-refunds on a redelivery; assigning regresses on a reorder, because at-least-once says nothing about *order*: deliveries are not serialized per order and a failed delivery is retried after a backoff, so the event carrying `30` can land after the one carrying `50`. A late `30` is not a duplicate (different key, so it is correctly processed), and assigning would drop your total from 50 back to 30. Compare with `BigDecimal` — not `double`, and not strings, since `"9.90".compareTo("10.00") > 0`. And check `is_test` before fulfilling anything.
 
 ## The traps worth knowing
 
-The canonical is **5 lines**, and with no query the third line is an **empty line that must
-still be there**:
+The canonical is **5 lines**, and with no query the third line is an **empty line that must still be there**:
 
 ```
 METHOD\nPATH\nCANONICAL_QUERY\nTIMESTAMP\nSHA256_HEX(BODY)
 ```
 
-Drop that line and you have a 4-line string whose HMAC is completely different — the server
-then rejects **every** request with `401 bad_signature`, not just the ones carrying a query.
+Drop that line and you have a 4-line string whose HMAC is completely different — the server then rejects **every** request with `401 bad_signature`, not just the ones carrying a query.
 
 The Java-specific ones:
 
-- **Do not sort the query with `String.compareTo`.** It compares UTF-16 code units, which
-  diverges from the server's UTF-8 byte order for code points above U+FFFF. A UTF-16
-  comparator passes every ASCII test and then fails in production. This demo compares UTF-8
-  `byte[]` with `Arrays.compareUnsigned`.
-- **`String.split` needs an explicit `-1` limit.** The one-arg form drops trailing empty
-  fragments, so a query like `a=1&b=` would canonicalize differently from the server.
-- **AES-GCM needs the tag length spelled out**: `new GCMParameterSpec(128, nonce)`. The server
-  appends the 16-byte tag to the ciphertext, which is exactly the layout `Cipher` expects, so
-  `blob[12..]` is passed in whole.
-- **Use `MessageDigest.isEqual` for constant-time comparison**, never `String.equals` or
-  `Arrays.equals`.
-- **Verify webhooks against the raw bytes**: drain the `InputStream` fully, verify, and only
-  then deserialize or decrypt.
-- **Serialize the body exactly once.** `Fluxa.request` calls `writeValueAsString` once, and
-  those same bytes are both hashed and written to the wire. Re-serializing after signing can
-  change key order or escaping and the signature dies. Build bodies with `LinkedHashMap` —
-  `Map.of` does not preserve order.
+- **Do not sort the query with `String.compareTo`.** It compares UTF-16 code units, which diverges from the server's UTF-8 byte order for code points above U+FFFF. A UTF-16 comparator passes every ASCII test and then fails in production. This demo compares UTF-8 `byte[]` with `Arrays.compareUnsigned`.
+- **`String.split` needs an explicit `-1` limit.** The one-arg form drops trailing empty fragments, so a query like `a=1&b=` would canonicalize differently from the server.
+- **AES-GCM needs the tag length spelled out**: `new GCMParameterSpec(128, nonce)`. The server appends the 16-byte tag to the ciphertext, which is exactly the layout `Cipher` expects, so `blob[12..]` is passed in whole.
+- **Use `MessageDigest.isEqual` for constant-time comparison**, never `String.equals` or `Arrays.equals`.
+- **Verify webhooks against the raw bytes**: drain the `InputStream` fully, verify, and only then deserialize or decrypt.
+- **Serialize the body exactly once.** `Fluxa.request` calls `writeValueAsString` once, and those same bytes are both hashed and written to the wire. Re-serializing after signing can change key order or escaping and the signature dies. Build bodies with `LinkedHashMap` — `Map.of` does not preserve order.
 
-Amounts are always decimal strings (the server stores `numeric(38,18)` and uses decimal
-arithmetic). Never parse them into `double`/`float`. Doing so does not visibly corrupt `9.99`
-— it prints back as `9.99` — but the nearest double is really `9.99000000000000021…`, and the
-error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`.
-Reconciliation then fails by a cent nobody can find. Keep the string, or use `BigDecimal` if
-you must compute.
+Amounts are always decimal strings (the server stores `numeric(38,18)` and uses decimal arithmetic). Never parse them into `double`/`float`. Doing so does not visibly corrupt `9.99` — it prints back as `9.99` — but the nearest double is really `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent nobody can find. Keep the string, or use `BigDecimal` if you must compute.

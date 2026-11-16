@@ -21,30 +21,15 @@ const (
 	maxBodyBytes   = 1 << 20
 )
 
-// Delivery is at-least-once: the same event can arrive more than once, so processing must
-// be idempotent.
-//
-// The idempotency key MUST include refunded_amount — (event, order_id) alone is NOT unique:
-// a single order can be partially refunded multiple times, and each refund fires its own
-// payment.refunded. Deduplicating on just (event, order_id) makes the second partial refund
-// look like a duplicate delivery: it gets dropped and answered with a 2xx, so fluxa records
-// the delivery as successful and never retries. The customer is under-refunded and nothing
-// errors anywhere in the chain.
-// refunded_amount is a cumulative total and strictly increasing, so it separates a
-// redelivery of the same event (same value -> deduplicate) from a genuinely new partial
-// refund (higher value -> process).
-//
-// In a real integration this belongs in the database as a unique index on
-// (order_id, event, refunded_amount); the in-process map here is demo-only.
+// Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
 type dedupe struct {
 	mu   sync.Mutex
 	seen map[string]struct{}
 }
 
-// dedupeKey, per the note above: payment.succeeded / failed carry no refunded_amount, so
-// the field is the zero value (an empty string) and the key degrades to (event, order_id).
+// dedupeKey reads the identity from the signed body after verification and decryption.
 func dedupeKey(evt fluxa.Event) string {
-	return evt.Event + ":" + evt.OrderID + ":" + evt.RefundedAmount
+	return evt.EventID
 }
 
 // markProcessed records the key and returns true if this is the first time it is seen.
@@ -121,6 +106,10 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := dedupeKey(evt)
+	if key == "" {
+		http.Error(w, "missing or invalid event_id", http.StatusBadRequest)
+		return
+	}
 	if !h.processed.markProcessed(key) {
 		// Duplicate delivery: already handled, so return 2xx without shipping or crediting
 		// anything a second time.
@@ -143,7 +132,35 @@ func (h *handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if evt.IsTest {
 			break
 		}
+		if evt.SettleOnReceived {
+			fmt.Println("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.ReceivedAmount)
+			break
+		}
 		fmt.Println("  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)")
+	case "payment.additional_received":
+		if !evt.IsTest {
+			fmt.Println("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.ReceivedAmount)
+		}
+	case "payment.pending":
+		fmt.Println("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.")
+	case "order.created":
+		fmt.Println("  → Record the pending order; do not fulfill.")
+	case "order.expired":
+		fmt.Println("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.")
+	case "order.canceled":
+		fmt.Println("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.")
+	case "payment.dispute_created":
+		fmt.Println("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.")
+	case "payment.dispute_closed":
+		fmt.Println("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.")
+	case "settlement.completed":
+		fmt.Println("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.")
+	case "subscription.charged":
+		fmt.Println("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.")
+	case "subscription.payment_failed":
+		fmt.Println("  → Record the failed subscription payment; reconcile subscription state.")
+	case "subscription.completed":
+		fmt.Println("  → Record subscription completion; do not fulfill again.")
 	case "payment.failed":
 		fmt.Println("  → Mark the order failed here")
 	case "payment.refunded":

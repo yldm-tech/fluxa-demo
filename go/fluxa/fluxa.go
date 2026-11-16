@@ -177,10 +177,16 @@ func truncate(raw []byte, n int) string {
 // Order is an order. Amounts are always decimal strings — the server stores numeric(38,18)
 // and uses decimal arithmetic, so never parse them into a float64.
 type Order struct {
-	ID       string `json:"id"`
-	Status   string `json:"status"`
-	Amount   string `json:"amount"`
-	Currency string `json:"currency"`
+	ID                string `json:"id"`
+	Status            string `json:"status"`
+	Amount            string `json:"amount"`
+	Currency          string `json:"currency"`
+	SettleOnReceived  bool   `json:"settle_on_received"`
+	MinReceivedAmount string `json:"min_received_amount"`
+	ReceivedAmount    string `json:"received_amount"`
+	RefundedAmount    string `json:"refunded_amount"`
+	Fee               string `json:"fee"`
+	Net               string `json:"net"`
 }
 
 // Payment is the channel-side payment record for an order.
@@ -202,7 +208,10 @@ type Instruction struct {
 	AmountDue             string `json:"amount_due"`
 	RequiredConfirmations int    `json:"required_confirmations"`
 	// type=client_secret
-	ClientSecret string `json:"client_secret"`
+	ClientSecret   string         `json:"client_secret"`
+	PublishableKey string         `json:"publishable_key"`
+	ExpiresAt      *string        `json:"expires_at"`
+	Extra          map[string]any `json:"extra"`
 }
 
 // ChargeRequest is the POST /api/v1/charges request body.
@@ -211,15 +220,21 @@ type ChargeRequest struct {
 	// order (idempotent: true) instead of creating a second charge.
 	MerchantOrderID string `json:"merchant_order_id"`
 	// Amount is a decimal string — never a float.
-	Amount           string            `json:"amount"`
-	Currency         string            `json:"currency"`
-	Channel          string            `json:"channel"`
-	Subject          string            `json:"subject,omitempty"`
-	Description      string            `json:"description,omitempty"`
-	Metadata         map[string]string `json:"metadata,omitempty"`
-	ReturnURL        string            `json:"return_url,omitempty"`
-	CancelURL        string            `json:"cancel_url,omitempty"`
-	ExpiresInSeconds int               `json:"expires_in_seconds,omitempty"`
+	Amount       string `json:"amount"`
+	Currency     string `json:"currency"`
+	Channel      string `json:"channel,omitempty"`
+	Network      string `json:"network,omitempty"`
+	Method       string `json:"method,omitempty"`
+	Presentation string `json:"presentation,omitempty"`
+	// A nil pointer omits the opt-in; a non-nil false is explicit on an idempotent replay.
+	SettleOnReceived  *bool          `json:"settle_on_received,omitempty"`
+	MinReceivedAmount *string        `json:"min_received_amount,omitempty"`
+	Subject           string         `json:"subject,omitempty"`
+	Description       string         `json:"description,omitempty"`
+	Metadata          map[string]any `json:"metadata,omitempty"`
+	ReturnURL         string         `json:"return_url,omitempty"`
+	CancelURL         string         `json:"cancel_url,omitempty"`
+	ExpiresInSeconds  int            `json:"expires_in_seconds,omitempty"`
 }
 
 // ChargeResponse is the POST /api/v1/charges response.
@@ -232,19 +247,23 @@ type ChargeResponse struct {
 
 // OrderResponse is the GET /api/v1/orders/{id} response.
 type OrderResponse struct {
-	Order Order `json:"order"`
+	Order       Order             `json:"order"`
+	Payment     *Payment          `json:"payment"`
+	CheckoutURL string            `json:"checkout_url"`
+	Settlements []json.RawMessage `json:"settlements"`
 }
 
 // Event is the webhook event body fluxa POSTs to your callback URL. Fields: see
 // ../../spec/SIGNING.md §3.
 type Event struct {
+	EventID         string `json:"event_id"`
 	Event           string `json:"event"`
 	OrderID         string `json:"order_id"`
 	MerchantOrderID string `json:"merchant_order_id"`
 	// Amount is the ORDER TOTAL, not the amount of this refund.
 	Amount   string `json:"amount"`
 	Currency string `json:"currency"`
-	// Status is one of paid / failed / refunded / partially_refunded.
+	// Status reflects the order lifecycle, including pending, paid, refunded, failed, expired and canceled.
 	Status  string `json:"status"`
 	Channel string `json:"channel"`
 	// IsTest = true means a test order: no real money moved, so do not ship anything.
@@ -253,8 +272,28 @@ type Event struct {
 	// RefundedAmount is the CUMULATIVE refunded total (not the amount of this refund). It is
 	// present only once something has been refunded — with no refund the field is absent from
 	// the JSON and unmarshals to the zero value, an empty string. See SIGNING.md §3.1.
-	RefundedAmount string `json:"refunded_amount"`
-	PaidAt         string `json:"paid_at"`
+	RefundedAmount    string          `json:"refunded_amount"`
+	PaidAt            string          `json:"paid_at"`
+	ChannelName       string          `json:"channel_name"`
+	SettleOnReceived  bool            `json:"settle_on_received"`
+	MinReceivedAmount string          `json:"min_received_amount"`
+	ReceivedAmount    string          `json:"received_amount"`
+	Fee               string          `json:"fee"`
+	Net               string          `json:"net"`
+	DepositID         string          `json:"deposit_id"`
+	TxHash            string          `json:"tx_hash"`
+	DepositAmount     string          `json:"deposit_amount"`
+	Reason            string          `json:"reason"`
+	DisputeID         string          `json:"dispute_id"`
+	Outcome           string          `json:"outcome"`
+	IsInquiry         bool            `json:"is_inquiry"`
+	Escalated         bool            `json:"escalated"`
+	Corrected         bool            `json:"corrected"`
+	PaymentMethod     string          `json:"payment_method"`
+	PaymentExpiresAt  string          `json:"payment_expires_at"`
+	Voucher           json.RawMessage `json:"voucher"`
+	SettlementTx      string          `json:"settlement_tx"`
+	SettlementAddress string          `json:"settlement_address"`
 }
 
 // CreateCharge creates a charge.

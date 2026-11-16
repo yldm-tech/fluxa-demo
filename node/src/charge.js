@@ -41,10 +41,10 @@ switch (instruction.type) {
     );
     break;
   case "client_secret":
-    console.log(`\nPayment method: confirm client-side with client_secret\n  ${instruction.client_secret}`);
+    console.log(`\nPayment method: confirm client-side with client_secret\n  ${instruction.client_secret}\n  Publishable key: ${instruction.publishable_key}`);
     break;
   case "none":
-    console.log("\nThis channel needs no payer action.");
+    console.log("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.");
     break;
   default:
     console.log(`\nUnknown instruction.type=${instruction.type}:`, instruction);

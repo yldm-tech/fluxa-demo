@@ -108,3 +108,8 @@ export function decryptWebhook(webhookSecret, envelopeJson) {
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
 }
+
+// Call only after signature verification and optional decryption. An empty key is invalid; never fall back to an order-based key or an unsigned header.
+export function dedupeKey(evt) {
+  return typeof evt?.event_id === "string" ? evt.event_id : "";
+}

@@ -172,11 +172,9 @@ end
 # under-refunded, and nothing errors anywhere in the chain. This group pins the correct
 # behavior. See ../../spec/SIGNING.md §3.1.
 
-# Kept in sync with dedupe_key in lib/webhook.rb. Redefined here rather than required:
-# loading lib/webhook.rb starts a TCPServer and begins accepting, and a test must not turn
-# itself into a server.
+# Exercise the same helper as the receiver without starting a server.
 def dedupe_key(evt)
-  "#{evt['event']}:#{evt['order_id']}:#{evt['refunded_amount']}"
+  Fluxa.dedupe_key(evt)
 end
 
 # The broken implementation these tests falsify — kept here so nobody "simplifies" back to it.
@@ -186,6 +184,7 @@ end
 
 def refund(cumulative, status = "partially_refunded")
   {
+    "event_id" => "whk_refund_#{cumulative}",
     "event" => "payment.refunded",
     "order_id" => "ord_X",
     "merchant_order_id" => "o-1",
@@ -198,6 +197,20 @@ def refund(cumulative, status = "partially_refunded")
 end
 
 group("idempotency key regression") do
+  test("current event identities distinguish updates and deduplicate retries") do
+    events = JSON.parse(File.read(File.join(__dir__, "..", "..", "spec", "events.json")))
+    seen = {}
+    events.each do |evt|
+      assert_equal(evt["event_id"], Fluxa.dedupe_key(evt), "use the signed event identity")
+      assert(!seen.key?(Fluxa.dedupe_key(evt)), "distinct events must survive")
+      seen[Fluxa.dedupe_key(evt)] = true
+      assert(seen.key?(Fluxa.dedupe_key(evt.dup)), "retry must be deduplicated")
+    end
+    [nil, [], {}, {"event_id" => nil}, {"event_id" => ""}, {"event_id" => 123}, {"event_id" => []}].each do |evt|
+      assert_equal("", Fluxa.dedupe_key(evt), "invalid identity must be rejected")
+    end
+  end
+
   test("two partial refunds must have different idempotency keys") do
     first = refund("30.00")
     second = refund("50.00") # cumulative: 30 + 20
@@ -219,14 +232,14 @@ group("idempotency key regression") do
                      "a full refund must be distinguishable from an earlier partial refund")
   end
 
-  test("payment.succeeded has no refunded_amount, so the key degrades to (event, order_id)") do
-    ok = { "event" => "payment.succeeded", "order_id" => "ord_X", "status" => "paid" }
-    assert_equal("payment.succeeded:ord_X:", dedupe_key(ok), "a missing field must interpolate to an empty string")
+  test("payment.succeeded uses event_id even without refunded_amount") do
+    ok = { "event_id" => "whk_paid", "event" => "payment.succeeded", "order_id" => "ord_X", "status" => "paid" }
+    assert_equal("whk_paid", dedupe_key(ok), "an absent refund does not change the event identity")
     assert_equal(dedupe_key(ok), dedupe_key(ok.dup), "a redelivery must be deduplicated")
   end
 
   test("succeeded and refunded are different keys") do
-    ok = { "event" => "payment.succeeded", "order_id" => "ord_X" }
+    ok = { "event_id" => "whk_paid", "event" => "payment.succeeded", "order_id" => "ord_X" }
     assert_not_equal(dedupe_key(ok), dedupe_key(refund("30.00")), "different events must have different keys")
   end
 

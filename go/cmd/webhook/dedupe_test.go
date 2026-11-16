@@ -14,6 +14,7 @@ package main
 
 import (
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -27,6 +28,7 @@ func brokenKey(evt fluxa.Event) string {
 
 func refund(cumulative, status string) fluxa.Event {
 	return fluxa.Event{
+		EventID:         "whk_refund_" + cumulative,
 		Event:           "payment.refunded",
 		OrderID:         "ord_X",
 		MerchantOrderID: "o-1",
@@ -66,10 +68,9 @@ func TestFullRefundDiffersFromEarlierPartial(t *testing.T) {
 	}
 }
 
-// payment.succeeded carries no refunded_amount in its JSON, so it unmarshals to the zero
-// value (an empty string) and the key degrades to (event, order_id).
-func TestSucceededWithoutRefundedAmountDegrades(t *testing.T) {
-	const payload = `{"event":"payment.succeeded","order_id":"ord_X","status":"paid"}`
+// payment.succeeded carries no refunded_amount in its JSON, so it unmarshals to the zero value; event_id still determines identity.
+func TestSucceededWithoutRefundedAmountUsesEventID(t *testing.T) {
+	const payload = `{"event_id":"whk_paid","event":"payment.succeeded","order_id":"ord_X","status":"paid"}`
 
 	var evt fluxa.Event
 	if err := json.Unmarshal([]byte(payload), &evt); err != nil {
@@ -78,7 +79,7 @@ func TestSucceededWithoutRefundedAmountDegrades(t *testing.T) {
 	if evt.RefundedAmount != "" {
 		t.Fatalf("with no refund RefundedAmount should be the empty string, got %q", evt.RefundedAmount)
 	}
-	if got := dedupeKey(evt); got != "payment.succeeded:ord_X:" {
+	if got := dedupeKey(evt); got != "whk_paid" {
 		t.Fatalf("key does not match: got %q", got)
 	}
 
@@ -93,7 +94,7 @@ func TestSucceededWithoutRefundedAmountDegrades(t *testing.T) {
 }
 
 func TestSucceededAndRefundedAreDifferentKeys(t *testing.T) {
-	ok := fluxa.Event{Event: "payment.succeeded", OrderID: "ord_X"}
+	ok := fluxa.Event{EventID: "whk_paid", Event: "payment.succeeded", OrderID: "ord_X"}
 	if dedupeKey(ok) == dedupeKey(refund("30.00", "partially_refunded")) {
 		t.Fatal("succeeded and refunded must be different keys")
 	}
@@ -246,5 +247,25 @@ func TestDecimalGreaterComparesAsDecimalsNotFloatsOrStrings(t *testing.T) {
 	// Premise check: the naive string compare these tests falsify really is wrong.
 	if !("9.90" > "10.00") {
 		t.Fatal("premise check failed: lexicographically 9.90 was supposed to sort above 10.00")
+	}
+}
+
+func TestCurrentEventIdentities(t *testing.T) {
+	raw, err := os.ReadFile("../../../spec/events.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var events []fluxa.Event
+	if err := json.Unmarshal(raw, &events); err != nil {
+		t.Fatal(err)
+	}
+	seen := &dedupe{seen: map[string]struct{}{}}
+	for _, evt := range events {
+		if dedupeKey(evt) != evt.EventID || !seen.markProcessed(dedupeKey(evt)) || seen.markProcessed(dedupeKey(evt)) {
+			t.Fatalf("distinct events must survive and retries must deduplicate: %+v", evt)
+		}
+	}
+	if dedupeKey(fluxa.Event{}) != "" {
+		t.Fatal("missing identity must be invalid")
 	}
 }

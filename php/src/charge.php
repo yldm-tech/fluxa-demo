@@ -55,10 +55,10 @@ try {
                 . "  Required confirmations: {$instruction['required_confirmations']}\n";
             break;
         case 'client_secret':
-            echo "\nPayer action: confirm client-side with the client_secret\n  {$instruction['client_secret']}\n";
+            echo "\nPayer action: confirm client-side with the client_secret\n  {$instruction['client_secret']}\n  Publishable key: {$instruction['publishable_key']}\n";
             break;
         case 'none':
-            echo "\nThis channel needs no payer action.\n";
+            echo "\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.\n";
             break;
         default:
             echo "\nUnknown instruction.type={$instruction['type']}: "

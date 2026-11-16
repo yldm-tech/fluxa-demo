@@ -35,7 +35,7 @@ func main() {
 		Channel:          cfg.Channel,
 		Subject:          "fluxa demo item",
 		Description:      "Created by fluxa-demo/go",
-		Metadata:         map[string]string{"source": "fluxa-demo", "lang": "go"},
+		Metadata:         map[string]any{"source": "fluxa-demo", "lang": "go"},
 		ReturnURL:        "https://example.com/pay/success",
 		CancelURL:        "https://example.com/pay/cancel",
 		ExpiresInSeconds: 1800,
@@ -66,9 +66,9 @@ func main() {
 			instruction.Chain, instruction.Asset, instruction.DepositAddress,
 			instruction.AmountDue, instruction.RequiredConfirmations)
 	case "client_secret":
-		fmt.Printf("\nPayment method: confirm client-side with client_secret\n  %s\n", instruction.ClientSecret)
+		fmt.Printf("\nPayment method: confirm client-side with client_secret\n  %s\n  Publishable key: %s\n", instruction.ClientSecret, instruction.PublishableKey)
 	case "none":
-		fmt.Println("\nThis channel needs no payer action.")
+		fmt.Println("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.")
 	default:
 		fmt.Printf("\nUnknown instruction.type=%s: %+v\n", instruction.Type, instruction)
 	}

@@ -31,12 +31,13 @@ fn main() {
         subject: "fluxa demo item".to_string(),
         description: "Created by fluxa-demo/rust".to_string(),
         metadata: BTreeMap::from([
-            ("source".to_string(), "fluxa-demo".to_string()),
-            ("lang".to_string(), "rust".to_string()),
+            ("source".to_string(), serde_json::json!("fluxa-demo")),
+            ("lang".to_string(), serde_json::json!("rust")),
         ]),
         return_url: "https://example.com/pay/success".to_string(),
         cancel_url: "https://example.com/pay/cancel".to_string(),
         expires_in_seconds: 1800,
+        ..Default::default()
     };
 
     let client = Client::new(cfg);
@@ -72,10 +73,10 @@ fn main() {
             instruction.required_confirmations
         ),
         "client_secret" => println!(
-            "\nPayer action: confirm client-side with the client_secret\n  {}",
-            instruction.client_secret
+            "\nPayer action: confirm client-side with the client_secret\n  {}\n  Publishable key: {}",
+            instruction.client_secret, instruction.publishable_key
         ),
-        "none" => println!("\nThis channel needs no payer action."),
+        "none" => println!("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id."),
         other => println!("\nUnknown instruction.type={other}: {instruction:?}"),
     }
 
