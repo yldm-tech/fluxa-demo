@@ -36,7 +36,8 @@ jobs:
         working-directory: node
 
   python:
-    runs-on: ubuntu-latest
+    # setup-python provides the supported Python 3.9 floor for Ubuntu 24.04, not Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
