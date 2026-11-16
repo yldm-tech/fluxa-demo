@@ -14,14 +14,12 @@ import unittest
 from decimal import Decimal
 
 
-# Kept in sync with dedupe_key in src/webhook.py. Redefined here rather than imported:
-# src/webhook.py imports config, which sys.exits when there is no .env — and these tests
-# must run fully offline, with no credentials.
-def dedupe_key(evt):
-    refunded = evt.get("refunded_amount")
-    return "{}:{}:{}".format(
-        evt.get("event"), evt.get("order_id"), "" if refunded is None else refunded
-    )
+import json
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from fluxa import dedupe_key
 
 
 # The broken implementation these tests falsify — kept here so nobody "simplifies" back to it.
@@ -31,6 +29,7 @@ def broken_key(evt):
 
 def refund(cumulative, status="partially_refunded"):
     return {
+        "event_id": "whk_refund_" + cumulative,
         "event": "payment.refunded",
         "order_id": "ord_X",
         "merchant_order_id": "o-1",
@@ -43,6 +42,17 @@ def refund(cumulative, status="partially_refunded"):
 
 
 class DedupeKey(unittest.TestCase):
+    def test_current_event_contract(self):
+        events = json.loads((Path(__file__).resolve().parents[2] / "spec/events.json").read_text())
+        seen = set()
+        for evt in events:
+            self.assertEqual(dedupe_key(evt), evt["event_id"])
+            self.assertNotIn(dedupe_key(evt), seen)
+            seen.add(dedupe_key(evt))
+            self.assertIn(dedupe_key(dict(evt)), seen)
+        for evt in [None, [], {}, {"event_id": None}, {"event_id": ""}, {"event_id": 123}, {"event_id": []}]:
+            self.assertEqual(dedupe_key(evt), "")
+
     def test_two_partial_refunds_differ(self):
         """Two partial refunds must have different idempotency keys."""
         first = refund("30.00")
@@ -67,15 +77,15 @@ class DedupeKey(unittest.TestCase):
         """A full refund differs from an earlier partial refund."""
         self.assertNotEqual(dedupe_key(refund("30.00")), dedupe_key(refund("1000.00", "refunded")))
 
-    def test_succeeded_without_refunded_amount_degrades(self):
-        """payment.succeeded has no refunded_amount, so the key degrades to (event, order_id)."""
-        ok = {"event": "payment.succeeded", "order_id": "ord_X", "status": "paid"}
-        self.assertEqual(dedupe_key(ok), "payment.succeeded:ord_X:")
+    def test_succeeded_without_refunded_amount_uses_event_id(self):
+        """payment.succeeded uses event_id even without refunded_amount."""
+        ok = {"event_id": "whk_paid", "event": "payment.succeeded", "order_id": "ord_X", "status": "paid"}
+        self.assertEqual(dedupe_key(ok), "whk_paid")
         self.assertEqual(dedupe_key(ok), dedupe_key(dict(ok)), "a redelivery must be deduplicated")
 
     def test_succeeded_and_refunded_are_different_keys(self):
         """succeeded and refunded are different keys."""
-        ok = {"event": "payment.succeeded", "order_id": "ord_X"}
+        ok = {"event_id": "whk_paid", "event": "payment.succeeded", "order_id": "ord_X"}
         self.assertNotEqual(dedupe_key(ok), dedupe_key(refund("30.00")))
 
 

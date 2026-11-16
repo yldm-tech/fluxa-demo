@@ -18,6 +18,24 @@ namespace FluxaDemo.Tests;
 
 public class DedupeTests
 {
+    [Fact]
+    public void CurrentEventIdentities()
+    {
+        var root = new DirectoryInfo(AppContext.BaseDirectory);
+        while (root != null && !File.Exists(Path.Combine(root.FullName, "spec", "events.json"))) root = root.Parent;
+        Assert.NotNull(root);
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(root!.FullName, "spec", "events.json")));
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var evt in doc.RootElement.EnumerateArray())
+        {
+            Assert.Equal(evt.GetProperty("event_id").GetString(), Webhook.DedupeKey(evt));
+            Assert.True(seen.Add(Webhook.DedupeKey(evt)));
+            Assert.False(seen.Add(Webhook.DedupeKey(evt.Clone())));
+        }
+        using var invalid = JsonDocument.Parse("""[null,[],{}, {"event_id":null}, {"event_id":""}, {"event_id":123}, {"event_id":[]}]""");
+        foreach (var evt in invalid.RootElement.EnumerateArray()) Assert.Equal("", Webhook.DedupeKey(evt));
+    }
+
     private static JsonElement Parse(string json) => JsonDocument.Parse(json).RootElement.Clone();
 
     /// <summary>The tempting-but-wrong key these tests falsify. Kept so nobody "simplifies"
@@ -30,6 +48,7 @@ public class DedupeTests
     private static JsonElement Refund(string cumulative, string status = "partially_refunded") =>
         Parse($$"""
         {
+          "event_id": "whk_refund_{{cumulative}}",
           "event": "payment.refunded",
           "order_id": "ord_X",
           "merchant_order_id": "o-1",
@@ -69,36 +88,36 @@ public class DedupeTests
             Webhook.DedupeKey(Refund("1000.00", "refunded")));
     }
 
-    [Fact(DisplayName = "payment.succeeded has no refunded_amount, so the key degrades to (event, order_id)")]
-    public void SucceededWithoutRefundedAmountDegrades()
+    [Fact(DisplayName = "payment.succeeded uses event_id even without refunded_amount")]
+    public void SucceededWithoutRefundedAmountUsesEventID()
     {
-        // An absent field must not throw, and must degrade to the old shape (trailing empty part).
-        var ok = Parse("""{"event":"payment.succeeded","order_id":"ord_X","status":"paid"}""");
-        Assert.Equal("payment.succeeded:ord_X:", Webhook.DedupeKey(ok));
+        // An absent refund must not affect the event identity.
+        var ok = Parse("""{"event_id":"whk_paid","event":"payment.succeeded","order_id":"ord_X","status":"paid"}""");
+        Assert.Equal("whk_paid", Webhook.DedupeKey(ok));
         // A redelivery must be deduplicated.
         Assert.Equal(Webhook.DedupeKey(ok), Webhook.DedupeKey(Parse(ok.GetRawText())));
     }
 
-    [Fact(DisplayName = "a JSON-null refunded_amount degrades too, rather than becoming the literal \"null\"")]
-    public void ExplicitNullRefundedAmountDegrades()
+    [Fact(DisplayName = "a JSON-null refunded_amount does not affect event identity")]
+    public void ExplicitNullRefundDoesNotChangeIdentity()
     {
-        var ok = Parse("""{"event":"payment.succeeded","order_id":"ord_X","refunded_amount":null}""");
-        Assert.Equal("payment.succeeded:ord_X:", Webhook.DedupeKey(ok));
+        var ok = Parse("""{"event_id":"whk_paid","event":"payment.succeeded","order_id":"ord_X","refunded_amount":null}""");
+        Assert.Equal("whk_paid", Webhook.DedupeKey(ok));
     }
 
     [Fact(DisplayName = "succeeded and refunded are different keys")]
     public void SucceededAndRefundedDiffer()
     {
-        var ok = Parse("""{"event":"payment.succeeded","order_id":"ord_X"}""");
+        var ok = Parse("""{"event_id":"whk_paid","event":"payment.succeeded","order_id":"ord_X"}""");
         Assert.NotEqual(Webhook.DedupeKey(ok), Webhook.DedupeKey(Refund("30.00")));
     }
 
     [Fact(DisplayName = "an absent is_test means not a test order; only a literal true counts")]
     public void IsTestOnlyTrueForLiteralTrue()
     {
-        Assert.False(Webhook.IsTest(Parse("""{"event":"payment.succeeded","order_id":"ord_X"}""")));
-        Assert.True(Webhook.IsTest(Parse("""{"event":"payment.succeeded","is_test":true}""")));
-        Assert.False(Webhook.IsTest(Parse("""{"event":"payment.succeeded","is_test":false}""")));
+        Assert.False(Webhook.IsTest(Parse("""{"event_id":"whk_paid","event":"payment.succeeded","order_id":"ord_X"}""")));
+        Assert.True(Webhook.IsTest(Parse("""{"event_id":"whk_paid","event":"payment.succeeded","is_test":true}""")));
+        Assert.False(Webhook.IsTest(Parse("""{"event_id":"whk_paid","event":"payment.succeeded","is_test":false}""")));
     }
 
     [Fact(DisplayName = "end to end: both partial refunds against a 1000 order must be processed")]

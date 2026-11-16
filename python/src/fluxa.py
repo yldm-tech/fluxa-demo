@@ -169,3 +169,9 @@ def decrypt_webhook(webhook_secret, envelope_json):
     # so blob[12:] goes in whole. aad is nil/None.
     ciphertext_and_tag = blob[12:]
     return AESGCM(key).decrypt(nonce, ciphertext_and_tag, None).decode("utf-8")
+
+
+def dedupe_key(evt):
+    """Read the opaque identity only from a verified, decrypted event. Empty means invalid."""
+    value = evt.get("event_id") if isinstance(evt, dict) else None
+    return value if isinstance(value, str) else ""

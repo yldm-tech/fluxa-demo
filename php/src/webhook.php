@@ -30,32 +30,8 @@ function logLine(string $text): void
     error_log($text);
 }
 
-// Delivery is at-least-once: the same event can arrive more than once, so processing MUST be
-// idempotent.
-//
-// The key MUST include refunded_amount. (event, order_id) alone is NOT unique: a single order
-// can be partially refunded more than once, and each refund fires its own payment.refunded.
-// Deduplicating on just that pair drops the second partial refund as a "duplicate" and returns
-// 2xx — fluxa then records the delivery as successful and never retries. The customer is
-// under-refunded and nothing errors anywhere in the chain.
-// refunded_amount is cumulative and strictly increasing, so it separates a redelivery of the
-// same event (same value -> deduplicate) from a genuinely new partial refund (higher value ->
-// process). payment.succeeded / payment.failed carry no refunded_amount, so for them the key
-// degrades to (event, order_id), which is correct for those.
-//
-// In a real integration this belongs in a database unique constraint (a unique index on
-// order_id + event + refunded_amount); the file marker below is a demo stand-in.
-// See ../../spec/SIGNING.md §3.1.
-//
-// PHP is shared-nothing: `php -S` re-executes this script from scratch for every request, so
-// an in-process array — what the Node demo can use, being one long-lived process — would
-// always start empty and dedupe nothing. The marker has to outlive the request, which is why
-// this uses the filesystem. fopen(..., 'x') is O_CREAT|O_EXCL: an atomic create-if-absent, so
-// two concurrent deliveries of the same event cannot both win.
-function dedupeKey(array $evt): string
-{
-    return "{$evt['event']}:{$evt['order_id']}:" . ($evt['refunded_amount'] ?? '');
-}
+// Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
+// PHP requests do not share memory: claimEvent uses an atomic file marker for this demo only.
 
 // readBody drains php://input with a hard cap, matching the 1 MiB limit and 413 response the
 // other language demos enforce. Returns null when the body exceeds MAX_BODY_BYTES. post_max_size
@@ -161,7 +137,11 @@ function handle(): void
         return;
     }
 
-    $key = dedupeKey($evt);
+    $key = Fluxa::dedupeKey($evt);
+    if ($key === '') {
+        respond(400, 'missing or invalid event_id');
+        return;
+    }
     if (!claimEvent($key)) {
         // Redelivery: already processed, so return 2xx without shipping goods or crediting
         // the account a second time.
@@ -171,8 +151,8 @@ function handle(): void
         return;
     }
 
-    logLine("✓ {$evt['event']}  order={$evt['order_id']}  merchant_order={$evt['merchant_order_id']}");
-    logLine("  {$evt['amount']} {$evt['currency']}  status={$evt['status']}  channel={$evt['channel']}");
+    logLine(sprintf('✓ %s event_id=%s order=%s merchant_order=%s', $evt['event'] ?? '', $key, $evt['order_id'] ?? '', $evt['merchant_order_id'] ?? ''));
+    logLine(sprintf('  %s %s status=%s channel=%s', $evt['amount'] ?? '', $evt['currency'] ?? '', $evt['status'] ?? '', $evt['channel'] ?? ''));
 
     if ($evt['is_test'] ?? false) {
         // Test-key orders fire real webhooks so merchants can exercise the integration, but
@@ -180,12 +160,49 @@ function handle(): void
         logLine("  ⚠ is_test=true: this is a test order — do not actually ship goods.");
     }
 
-    switch ($evt['event']) {
+    switch ($evt['event'] ?? '') {
         case 'payment.succeeded':
             if ($evt['is_test'] ?? false) {
                 break;
             }
+            if ($evt['settle_on_received'] ?? false) {
+                logLine('  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. ' . ($evt['received_amount'] ?? ''));
+                break;
+            }
             logLine("  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)");
+            break;
+        case 'payment.additional_received':
+            if (!($evt['is_test'] ?? false)) logLine('  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. ' . ($evt['received_amount'] ?? ''));
+            break;
+        case 'payment.pending':
+            logLine('  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.');
+            break;
+        case 'order.created':
+            logLine('  → Record the pending order; do not fulfill.');
+            break;
+        case 'order.expired':
+            logLine('  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.');
+            break;
+        case 'order.canceled':
+            logLine('  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.');
+            break;
+        case 'payment.dispute_created':
+            logLine('  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.');
+            break;
+        case 'payment.dispute_closed':
+            logLine('  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.');
+            break;
+        case 'settlement.completed':
+            logLine('  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.');
+            break;
+        case 'subscription.charged':
+            logLine('  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.');
+            break;
+        case 'subscription.payment_failed':
+            logLine('  → Record the failed subscription payment; reconcile subscription state.');
+            break;
+        case 'subscription.completed':
+            logLine('  → Record subscription completion; do not fulfill again.');
             break;
         case 'payment.failed':
             logLine("  → Mark the order failed here");

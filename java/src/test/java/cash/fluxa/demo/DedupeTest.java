@@ -31,6 +31,21 @@ class DedupeTest {
 
   private static final ObjectMapper JSON = new ObjectMapper();
 
+  @Test
+  void currentEventIdentities() throws Exception {
+    JsonNode events = JSON.readTree(Config.repoRoot().resolve("spec/events.json").toFile());
+    Set<String> seen = new HashSet<>();
+    for (JsonNode evt : events) {
+      assertEquals(evt.path("event_id").asText(), WebhookDemo.dedupeKey(evt));
+      assertTrue(seen.add(WebhookDemo.dedupeKey(evt)), "distinct events must survive");
+      assertFalse(seen.add(WebhookDemo.dedupeKey(evt.deepCopy())), "retry must deduplicate");
+    }
+    for (JsonNode evt : JSON.readTree("[null,[],{}, {\"event_id\":null}, {\"event_id\":\"\"}, {\"event_id\":123}, {\"event_id\":[]}]")) {
+      assertEquals("", WebhookDemo.dedupeKey(evt));
+    }
+  }
+
+
   /** The tempting-but-wrong key these tests falsify. Kept so nobody "simplifies" back to it. */
   private static String brokenKey(JsonNode evt) {
     return evt.path("event").asText() + ":" + evt.path("order_id").asText();
@@ -43,6 +58,7 @@ class DedupeTest {
 
   private static JsonNode refund(String cumulative, String status) {
     ObjectNode evt = JSON.createObjectNode();
+    evt.put("event_id", "whk_refund_" + cumulative);
     evt.put("event", "payment.refunded");
     evt.put("order_id", "ord_X");
     evt.put("merchant_order_id", "o-1");
@@ -90,15 +106,16 @@ class DedupeTest {
   }
 
   @Test
-  @DisplayName("payment.succeeded has no refunded_amount, so the key degrades to (event, order_id)")
-  void succeededWithoutRefundedAmountDegrades() {
+  @DisplayName("payment.succeeded uses event_id even without refunded_amount")
+  void succeededWithoutRefundedAmountUsesEventID() {
     ObjectNode ok = JSON.createObjectNode();
+    ok.put("event_id", "whk_paid");
     ok.put("event", "payment.succeeded");
     ok.put("order_id", "ord_X");
     ok.put("status", "paid");
 
-    // An absent field must not NPE, and must degrade to the old shape (trailing empty part).
-    assertEquals("payment.succeeded:ord_X:", WebhookDemo.dedupeKey(ok));
+    // An absent refund must not affect the event identity.
+    assertEquals("whk_paid", WebhookDemo.dedupeKey(ok));
     assertEquals(
         WebhookDemo.dedupeKey(ok),
         WebhookDemo.dedupeKey(ok.deepCopy()),
@@ -106,19 +123,21 @@ class DedupeTest {
   }
 
   @Test
-  @DisplayName("a JSON-null refunded_amount degrades too, rather than becoming the literal \"null\"")
-  void explicitNullRefundedAmountDegrades() {
+  @DisplayName("a JSON-null refunded_amount does not affect event identity")
+  void explicitNullRefundDoesNotChangeIdentity() {
     ObjectNode ok = JSON.createObjectNode();
+    ok.put("event_id", "whk_paid");
     ok.put("event", "payment.succeeded");
     ok.put("order_id", "ord_X");
     ok.putNull("refunded_amount");
-    assertEquals("payment.succeeded:ord_X:", WebhookDemo.dedupeKey(ok));
+    assertEquals("whk_paid", WebhookDemo.dedupeKey(ok));
   }
 
   @Test
   @DisplayName("succeeded and refunded are different keys")
   void succeededAndRefundedDiffer() {
     ObjectNode ok = JSON.createObjectNode();
+    ok.put("event_id", "whk_paid");
     ok.put("event", "payment.succeeded");
     ok.put("order_id", "ord_X");
     assertNotEquals(WebhookDemo.dedupeKey(ok), WebhookDemo.dedupeKey(refund("30.00")));

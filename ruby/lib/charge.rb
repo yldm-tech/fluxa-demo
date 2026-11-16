@@ -43,9 +43,9 @@ when "crypto_address"
        "\n  Amount due: #{instruction['amount_due']}" \
        "\n  Required confirmations: #{instruction['required_confirmations']}"
 when "client_secret"
-  puts "\nPayment method: confirm client-side with client_secret\n  #{instruction['client_secret']}"
+  puts "\nPayment method: confirm client-side with client_secret\n  #{instruction['client_secret']}\n  Publishable key: #{instruction['publishable_key']}"
 when "none"
-  puts "\nThis channel needs no payer action."
+  puts "\nNo payable instruction: check order.status; closed orders require a new merchant_order_id."
 else
   puts "\nUnknown instruction.type=#{instruction['type']}: #{instruction.inspect}"
 end

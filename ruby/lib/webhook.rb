@@ -15,21 +15,7 @@ STDOUT.sync = true
 
 config = Fluxa::Config.default
 
-# Delivery is at-least-once: the same event can arrive more than once, so processing must be
-# idempotent.
-#
-# The idempotency key MUST include refunded_amount — (event, order_id) alone is NOT unique:
-# a single order can be partially refunded multiple times, and each refund fires its own
-# payment.refunded. Deduplicating on just (event, order_id) makes the second partial refund
-# look like a duplicate delivery: it gets dropped and answered with a 2xx, so fluxa records
-# the delivery as successful and never retries. The customer is under-refunded and nothing
-# errors anywhere in the chain.
-# refunded_amount is a cumulative total and strictly increasing, so it separates a
-# redelivery of the same event (same value -> deduplicate) from a genuinely new partial
-# refund (higher value -> process).
-#
-# In a real integration this belongs in the database as a unique index on
-# (order_id, event, refunded_amount); the in-process hash here is demo-only.
+# Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
 processed = {}
 lock = Mutex.new
 
@@ -67,12 +53,6 @@ def read_request(sock)
 
   body = length.positive? ? sock.read(length).to_s.b : "".b
   [method, headers, body]
-end
-
-# dedupe_key, per the note above: payment.succeeded / failed carry no refunded_amount, and
-# nil interpolates to an empty string, so the key degrades to (event, order_id).
-def dedupe_key(evt)
-  "#{evt['event']}:#{evt['order_id']}:#{evt['refunded_amount']}"
 end
 
 def handle(sock, config, processed, lock)
@@ -135,7 +115,11 @@ def handle(sock, config, processed, lock)
     return
   end
 
-  key = dedupe_key(evt)
+  key = Fluxa.dedupe_key(evt)
+  if key.empty?
+    respond(sock, "400 Bad Request", "missing or invalid event_id")
+    return
+  end
   duplicate = lock.synchronize do
     processed.key?(key) ? true : (processed[key] = true) && false
   end
@@ -158,9 +142,33 @@ def handle(sock, config, processed, lock)
 
   case evt["event"]
   when "payment.succeeded"
-    unless evt["is_test"]
+    if !evt["is_test"] && evt["settle_on_received"]
+      puts "  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. #{evt['received_amount']}"
+    elsif !evt["is_test"]
       puts "  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)"
     end
+  when "payment.additional_received"
+    puts "  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice. #{evt['received_amount']}" unless evt["is_test"]
+  when "payment.pending"
+    puts "  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill."
+  when "order.created"
+    puts "  → Record the pending order; do not fulfill."
+  when "order.expired"
+    puts "  → Close the checkout and hide payment instructions; reconcile current order state before applying late events."
+  when "order.canceled"
+    puts "  → Close the checkout and hide payment instructions; reconcile current order state before applying late events."
+  when "payment.dispute_created"
+    puts "  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here."
+  when "payment.dispute_closed"
+    puts "  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here."
+  when "settlement.completed"
+    puts "  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again."
+  when "subscription.charged"
+    puts "  → Record the subscription update; do not duplicate fulfillment from payment.succeeded."
+  when "subscription.payment_failed"
+    puts "  → Record the failed subscription payment; reconcile subscription state."
+  when "subscription.completed"
+    puts "  → Record subscription completion; do not fulfill again."
   when "payment.failed"
     puts "  → Mark the order failed here"
   when "payment.refunded"

@@ -6,33 +6,10 @@ import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from config import config
-from fluxa import decrypt_webhook, verify_webhook
+from fluxa import decrypt_webhook, verify_webhook, dedupe_key
 
-# Delivery is at-least-once: the same event can arrive more than once, so processing must
-# be idempotent.
-#
-# The idempotency key MUST include refunded_amount — (event, order_id) alone is NOT unique:
-# a single order can be partially refunded multiple times, and each refund fires its own
-# payment.refunded. Deduplicating on just (event, order_id) makes the second partial refund
-# look like a duplicate delivery: it gets dropped and answered with a 2xx, so fluxa records
-# the delivery as successful and never retries. The customer is under-refunded and nothing
-# errors anywhere in the chain.
-# refunded_amount is a cumulative total and strictly increasing, so it separates a
-# redelivery of the same event (same value -> deduplicate) from a genuinely new partial
-# refund (higher value -> process).
-#
-# In a real integration this belongs in the database as a unique index on
-# (order_id, event, refunded_amount); the in-process set here is demo-only.
+# Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
 processed = set()
-
-
-# dedupe_key, per the note above: payment.succeeded / failed carry no refunded_amount, so
-# the key degrades to (event, order_id).
-def dedupe_key(evt):
-    refunded = evt.get("refunded_amount")
-    return "{}:{}:{}".format(
-        evt.get("event"), evt.get("order_id"), "" if refunded is None else refunded
-    )
 
 
 MAX_SKEW_SECONDS = 300
@@ -113,6 +90,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return
 
         key = dedupe_key(evt)
+        if not key:
+            self._reply(400, "missing or invalid event_id")
+            return
         if key in processed:
             # Duplicate delivery: already handled, so return 2xx without shipping or
             # crediting anything a second time.
@@ -138,8 +118,33 @@ class WebhookHandler(BaseHTTPRequestHandler):
             print("  ⚠ is_test=true: this is a test order — do not ship anything.")
 
         if evt.get("event") == "payment.succeeded":
-            if not evt.get("is_test"):
+            if not evt.get("is_test") and evt.get("settle_on_received"):
+                print("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.get("received_amount"))
+            elif not evt.get("is_test"):
                 print("  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)")
+        elif evt.get("event") == "payment.additional_received":
+            if not evt.get("is_test"):
+                print("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.get("received_amount"))
+        elif evt.get("event") == "payment.pending":
+            print("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.")
+        elif evt.get("event") == "order.created":
+            print("  → Record the pending order; do not fulfill.")
+        elif evt.get("event") == "order.expired":
+            print("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.")
+        elif evt.get("event") == "order.canceled":
+            print("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.")
+        elif evt.get("event") == "payment.dispute_created":
+            print("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.")
+        elif evt.get("event") == "payment.dispute_closed":
+            print("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.")
+        elif evt.get("event") == "settlement.completed":
+            print("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.")
+        elif evt.get("event") == "subscription.charged":
+            print("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.")
+        elif evt.get("event") == "subscription.payment_failed":
+            print("  → Record the failed subscription payment; reconcile subscription state.")
+        elif evt.get("event") == "subscription.completed":
+            print("  → Record subscription completion; do not fulfill again.")
         elif evt.get("event") == "payment.failed":
             print("  → Mark the order failed here")
         elif evt.get("event") == "payment.refunded":

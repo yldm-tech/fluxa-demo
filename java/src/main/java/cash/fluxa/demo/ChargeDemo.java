@@ -70,8 +70,8 @@ public final class ChargeDemo {
               + "\n  Required confirmations: " + instruction.path("required_confirmations").asText());
       case "client_secret" -> System.out.println(
           "\nPayer action: confirm client-side with the client_secret\n  "
-              + instruction.path("client_secret").asText());
-      case "none" -> System.out.println("\nThis channel needs no payer action.");
+              + instruction.path("client_secret").asText() + "\n  Publishable key: " + instruction.path("publishable_key").asText());
+      case "none" -> System.out.println("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.");
       default -> System.out.println("\nUnknown instruction.type=" + type + ": " + instruction);
     }
 

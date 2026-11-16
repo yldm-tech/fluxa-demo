@@ -2,28 +2,10 @@
 //   node src/webhook.js
 import { createServer } from "node:http";
 import { config } from "./config.js";
-import { verifyWebhook, decryptWebhook } from "./fluxa.js";
+import { verifyWebhook, decryptWebhook, dedupeKey } from "./fluxa.js";
 
-// Delivery is at-least-once: the same event can arrive more than once, so processing
-// must be idempotent.
-//
-// The idempotency key MUST include refunded_amount — (event, order_id) alone is NOT
-// unique: a single order can be partially refunded multiple times, and each refund
-// fires its own payment.refunded. Deduplicating on just (event, order_id) makes the
-// second partial refund look like a duplicate delivery: it gets dropped and answered
-// with a 2xx, so fluxa records the delivery as successful and never retries. The
-// customer is under-refunded and nothing errors anywhere in the chain.
-// refunded_amount is a cumulative total and strictly increasing, so it separates a
-// redelivery of the same event (same value → deduplicate) from a genuinely new partial
-// refund (higher value → process).
-//
-// In a real integration this belongs in the database as a unique index on
-// (order_id, event, refunded_amount); the in-process Set here is demo-only.
+// Deduplicate using event_id from the verified, decrypted body; HTTP headers are not signed. Production must commit the event_id unique row and business changes in one transaction before returning 2xx. The local store here only demonstrates duplicate detection.
 const processed = new Set();
-
-// dedupeKey, per the note above: payment.succeeded / failed carry no refunded_amount,
-// so the key degrades to (event, order_id).
-const dedupeKey = (evt) => `${evt.event}:${evt.order_id}:${evt.refunded_amount ?? ""}`;
 
 const MAX_SKEW_SECONDS = 300;
 const MAX_BODY_BYTES = 1 << 20;
@@ -96,6 +78,10 @@ const server = createServer((req, res) => {
     }
 
     const key = dedupeKey(evt);
+    if (!key) {
+      res.writeHead(400).end("missing or invalid event_id");
+      return;
+    }
     if (processed.has(key)) {
       // Duplicate delivery: already handled, so return 2xx without shipping or
       // crediting anything a second time.
@@ -116,7 +102,44 @@ const server = createServer((req, res) => {
     switch (evt.event) {
       case "payment.succeeded":
         if (evt.is_test) break;
+        if (evt.settle_on_received) {
+          console.log("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.received_amount);
+          break;
+        }
         console.log("  → Ship goods / grant entitlements here (treat amounts as decimal strings, never floats)");
+        break;
+      case "payment.additional_received":
+        if (!evt.is_test) console.log("  → Advance credited gross to max(recorded, received_amount) atomically and apply only the positive delta; never add deposit_amount separately or fulfill twice.", evt.received_amount);
+        break;
+      case "payment.pending":
+        console.log("  → Show the latest voucher/payment_expires_at only while the order is pending; do not fulfill.");
+        break;
+      case "order.created":
+        console.log("  → Record the pending order; do not fulfill.");
+        break;
+      case "order.expired":
+        console.log("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+        break;
+      case "order.canceled":
+        console.log("  → Close the checkout and hide payment instructions; reconcile current order state before applying late events.");
+        break;
+      case "payment.dispute_created":
+        console.log("  → Track dispute_id and is_inquiry/escalated; a late creation must not overwrite a closed dispute. No balance change here.");
+        break;
+      case "payment.dispute_closed":
+        console.log("  → Track outcome by dispute_id; corrected=true can replace lost with won. No balance change here.");
+        break;
+      case "settlement.completed":
+        console.log("  → Record settlement_tx as a receipt of merchant settlement; do not fulfill or credit the customer again.");
+        break;
+      case "subscription.charged":
+        console.log("  → Record the subscription update; do not duplicate fulfillment from payment.succeeded.");
+        break;
+      case "subscription.payment_failed":
+        console.log("  → Record the failed subscription payment; reconcile subscription state.");
+        break;
+      case "subscription.completed":
+        console.log("  → Record subscription completion; do not fulfill again.");
         break;
       case "payment.failed":
         console.log("  → Mark the order failed here");

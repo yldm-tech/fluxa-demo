@@ -36,7 +36,8 @@ jobs:
         working-directory: node
 
   python:
-    runs-on: ubuntu-latest
+    # setup-python provides the supported Python 3.9 floor for Ubuntu 24.04, not Ubuntu 26.04.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -144,7 +145,7 @@ jobs:
           set -euo pipefail
           cp src/fluxa.js /tmp/fluxa.js.bak
           # Remove canonicalQuery from the joined canonical → 4 lines instead of 5.
-          perl -0pi -e 's/\[method\.toUpperCase\(\), path, canonicalQuery\(rawQuery\), timestamp, bodyHash\]/[method.toUpperCase(), path, timestamp, bodyHash]/' src/fluxa.js
+          timeout 60 perl -0pi -e 's/\[method\.toUpperCase\(\), path, canonicalQuery\(rawQuery\), timestamp, bodyHash\]/[method.toUpperCase(), path, timestamp, bodyHash]/' src/fluxa.js
           if grep -q 'canonicalQuery(rawQuery), timestamp' src/fluxa.js; then
             echo "mutation did not apply — the canonical() shape changed; update this check" >&2
             exit 1
@@ -162,7 +163,7 @@ jobs:
           set -euo pipefail
           cp src/fluxa.js /tmp/fluxa.js.bak
           # Swap the explicit UTF-8 byte comparator for JavaScript's default sort() (UTF-16).
-          perl -0pi -e 's/raw\.split\("&"\)\.sort\(byteOrder\)\.join\("&"\)/raw.split("&").sort().join("&")/' src/fluxa.js
+          timeout 60 perl -0pi -e 's/raw\.split\("&"\)\.sort\(byteOrder\)\.join\("&"\)/raw.split("&").sort().join("&")/' src/fluxa.js
           if grep -q 'sort(byteOrder)' src/fluxa.js; then
             echo "mutation did not apply — canonicalQuery's sort shape changed; update this check" >&2
             exit 1
@@ -174,6 +175,26 @@ jobs:
           fi
           cp /tmp/fluxa.js.bak src/fluxa.js
           echo "OK: the mutation was caught"
+
+      - name: event identity tests reject the obsolete composite key
+        working-directory: node
+        run: |
+          set -euo pipefail
+          cp src/fluxa.js /tmp/fluxa-event-id.js.bak
+          trap 'cp /tmp/fluxa-event-id.js.bak src/fluxa.js; rm -f /tmp/fluxa-event-id.js.bak' EXIT
+          timeout 60 python3 - <<'PY'
+          from pathlib import Path
+          path = Path("src/fluxa.js")
+          source = path.read_text()
+          old = 'return typeof evt?.event_id === "string" ? evt.event_id : "";'
+          assert old in source, "update the mutation for the current helper"
+          path.write_text(source.replace(old, 'return `${evt?.event}:${evt?.order_id}:${evt?.refunded_amount ?? ""}`;'))
+          PY
+          if node --test test/dedupe.test.js >/dev/null 2>&1; then
+            echo "FAIL: distinct event IDs collapsed without a test failure" >&2
+            exit 1
+          fi
+          echo "OK: obsolete event identity was rejected"
 
   # Guards this repo's public-ness. The fluxa platform repo is private, so a comment or
   # doc line citing its internals — file paths, commit SHAs, queue mechanics — leaks

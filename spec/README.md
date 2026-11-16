@@ -7,28 +7,19 @@
 
 ## What `vectors.json` is
 
-A set of (input → expected output) pairs generated from fluxa's **actual server-side signing
-code**, not from a reading of the docs:
+A set of (input → expected output) pairs generated from fluxa's **actual server-side signing code**, not from a reading of the docs:
 
-- `requests[]` — merchant API request signing. Given method / path / query / timestamp / body /
-  secret, the expected `canonical` string and `signature`.
+- `requests[]` — merchant API request signing. Given method / path / query / timestamp / body / secret, the expected `canonical` string and `signature`.
 - `webhooks[]` — webhook verification. Given timestamp / body / secret, the expected `signature`.
-- `envelopes[]` — the AES-256-GCM envelope. Given an envelope and secret, the expected decrypted
-  `plaintext`. The fixture is produced with a fixed nonce for determinism and is verified to
-  decrypt with the server's own decrypter.
+- `envelopes[]` — the AES-256-GCM envelope. Given an envelope and secret, the expected decrypted `plaintext`. The fixture is produced with a fixed nonce for determinism and is verified to decrypt with the server's own decrypter.
 
-Every language demo has a test that reproduces these **byte for byte**. That is the single
-criterion for whether a port is correct — it needs no running server and does not depend on
-anyone's interpretation of prose.
+Every language demo has a test that reproduces these **byte for byte**. That is the single criterion for whether a port is correct — it needs no running server and does not depend on anyone's interpretation of prose.
 
-Edges covered: no query (the empty third canonical line), method-case normalization, empty body,
-reordered query yielding an identical signature, repeated keys, non-ASCII body, empty webhook body.
+Edges covered: no query (the empty third canonical line), method-case normalization, empty body, reordered query yielding an identical signature, repeated keys, non-ASCII body, empty webhook body.
 
 ### `get_query_utf16_divergence` — the one vector that discriminates
 
-Every other vector uses an ASCII query, where **any** sort order — UTF-8 byte order, UTF-16,
-even a culture-sensitive one — produces the same result. Only this vector separates a correct
-implementation from one that merely looks correct:
+Every other vector uses an ASCII query, where **any** sort order — UTF-8 byte order, UTF-16, even a culture-sensitive one — produces the same result. Only this vector separates a correct implementation from one that merely looks correct:
 
 ```
 raw_query = k=￿&k=😀           (U+FFFF vs U+1F600)
@@ -36,9 +27,7 @@ UTF-8 byte order → k=￿&k=😀     0xEF < 0xF0, so U+FFFF sorts first   ← w
 UTF-16 order     → k=😀&k=￿     0xFFFF > 0xD83D (the lead surrogate) — reversed
 ```
 
-This is not theoretical. Mutation testing confirms it: swap the comparator in the Node
-implementation for JavaScript's default `sort()` and **only this vector fails** — every other
-vector, including the non-ASCII body one, still passes.
+This is not theoretical. Mutation testing confirms it: swap the comparator in the Node implementation for JavaScript's default `sort()` and **only this vector fails** — every other vector, including the non-ASCII body one, still passes.
 
 So each language must compare UTF-8 bytes explicitly:
 
@@ -52,16 +41,14 @@ So each language must compare UTF-8 bytes explicitly:
 | Ruby | `Array#sort` (already byte order) — but pass `-1` to `split` (see below) |
 | Go / Rust | already byte order |
 
-One more cross-language trap: `split` on `&` must **keep trailing empty fragments**. Ruby's
-default `split` and Java's one-arg `String.split` drop them, which diverges from the server;
-both need an explicit `-1` limit.
+One more cross-language trap: `split` on `&` must **keep trailing empty fragments**. Ruby's default `split` and Java's one-arg `String.split` drop them, which diverges from the server; both need an explicit `-1` limit.
+
+## Event identity fixtures
+
+[`events.json`](./events.json) contains synthetic event payloads shared by all eight language tests. Different events deliberately share order/type/amount fields but have independent `event_id` values, so a regression to a composite key fails. Retrying the same fixture must keep the same identity. These are lifecycle test fixtures, not cryptographic known-answer vectors; `vectors.json` remains unchanged because signing and encryption have not changed.
 
 ## Regenerating
 
-`vectors.json` is generated and maintained inside the fluxa platform repository, where the
-signing code lives — that is what makes it an independent oracle rather than a restatement of
-this repo's own implementations. If the signing contract ever changes, the vectors are
-regenerated there and updated here, and every language's test will fail loudly until its
-implementation matches.
+`vectors.json` is generated and maintained inside the fluxa platform repository, where the signing code lives — that is what makes it an independent oracle rather than a restatement of this repo's own implementations. If the signing contract ever changes, the vectors are regenerated there and updated here, and every language's test will fail loudly until its implementation matches.
 
 You do not need to regenerate anything to use this repo.

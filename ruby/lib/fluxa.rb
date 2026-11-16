@@ -42,6 +42,12 @@ module Fluxa
   # code-unit sort (JS's default) would diverge.
   # The -1 limit keeps trailing empty fragments ("a&" stays two fragments), matching the
   # server; Ruby's default split silently drops them, which changes the HMAC.
+  # Read only from a verified, decrypted event. Empty means invalid; never use an unsigned header as a fallback.
+  def dedupe_key(evt)
+    value = evt.is_a?(Hash) ? evt["event_id"] : nil
+    value.is_a?(String) ? value : ""
+  end
+
   def canonical_query(raw)
     return "" if raw.nil? || raw.empty?
 

@@ -60,9 +60,9 @@ def main():
             )
         )
     elif kind == "client_secret":
-        print("\nPayment method: confirm client-side with client_secret\n  {}".format(instruction["client_secret"]))
+        print("\nPayment method: confirm client-side with client_secret\n  {}\n  Publishable key: {}".format(instruction["client_secret"], instruction["publishable_key"]))
     elif kind == "none":
-        print("\nThis channel needs no payer action.")
+        print("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.")
     else:
         print("\nUnknown instruction.type={}: {}".format(kind, instruction))
 

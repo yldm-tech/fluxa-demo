@@ -1,7 +1,6 @@
 # fluxa 签名契约
 
-本文件是本仓库所有 demo 的实现依据，由 [`vectors.json`](./vectors.json) 锁定——那是由 fluxa
-服务端真实签名代码生成的已知答案向量。实现与本文档冲突时，以向量为准。
+本文件是本仓库所有 demo 的实现依据，由 [`vectors.json`](./vectors.json) 锁定——那是由 fluxa 服务端真实签名代码生成的已知答案向量。实现与本文档冲突时，以向量为准。
 
 English: [SIGNING.md](./SIGNING.md)
 
@@ -29,11 +28,9 @@ SHA256_HEX(BODY)
 
 - `METHOD`——转大写（`post` → `POST`）
 - `PATH`——不含域名和 query，如 `/api/v1/charges`
-- `CANONICAL_QUERY`——见下。**没有 query 时这一行是空字符串，但这一行仍然存在**，
-  即 canonical 含一个空的第三行
+- `CANONICAL_QUERY`——见下。**没有 query 时这一行是空字符串，但这一行仍然存在**， 即 canonical 含一个空的第三行
 - `TIMESTAMP`——与 `X-Timestamp` 头逐字节一致
-- `SHA256_HEX(BODY)`——请求体原始字节的 SHA-256，小写十六进制。空体是对空串求哈希
-  （恒为 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`）
+- `SHA256_HEX(BODY)`——请求体原始字节的 SHA-256，小写十六进制。空体是对空串求哈希 （恒为 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`）
 
 > **最常见的错误：没有 query 时把第三行整行省掉。** 那会得到 4 行串，HMAC 完全不同，
 > 服务端返回 `401 bad_signature`。这一行即使为空也是承重的。
@@ -56,22 +53,16 @@ POST⏎/api/v1/charges⏎⏎1750000000⏎74f74511aebc…
 | `limit=10&status=paid` | `limit=10&status=paid` |
 | `z=1&z=2&a=3` | `a=3&z=1&z=2` |
 
-排序对象是整个 `key=value` 片段（不是只按 key），不做百分号解码，重复 key 全部保留。
-这让签名与参数发送顺序无关，同时任何 query 参数都无法在保持签名有效的前提下被篡改。
+排序对象是整个 `key=value` 片段（不是只按 key），不做百分号解码，重复 key 全部保留。 这让签名与参数发送顺序无关，同时任何 query 参数都无法在保持签名有效的前提下被篡改。
 
 两个真实存在的可移植性陷阱：
 
-- **必须按 UTF-8 字节序排序。** 对 ASCII/百分号编码的 query（即全部真实流量），这与多数语言
-  的默认字符串排序一致；但对未编码的非 ASCII 字符会分叉，而且 **C# 的默认排序是
-  culture-sensitive**，即使全 ASCII 在某些 locale 下也是错的。各语言的正确比较器见
-  [`README.md`](./README.md)。
-- **按 `&` 切分时必须保留尾部空片段。** Ruby 默认的 `split` 和 Java 单参数的 `String.split`
-  会丢弃它们，与服务端分叉；两者都要显式传 `-1`。
+- **必须按 UTF-8 字节序排序。** 对 ASCII/百分号编码的 query（即全部真实流量），这与多数语言 的默认字符串排序一致；但对未编码的非 ASCII 字符会分叉，而且 **C# 的默认排序是 culture-sensitive**，即使全 ASCII 在某些 locale 下也是错的。各语言的正确比较器见 [`README.md`](./README.md)。
+- **按 `&` 切分时必须保留尾部空片段。** Ruby 默认的 `split` 和 Java 单参数的 `String.split` 会丢弃它们，与服务端分叉；两者都要显式传 `-1`。
 
 ### 签名的字节必须与发送的字节一致
 
-body 只序列化**一次**，然后签它、发它——**同一份字节**。不要签名后再序列化一次：
-键顺序或空格的任何差异都会让签名失效。
+body 只序列化**一次**，然后签它、发它——**同一份字节**。不要签名后再序列化一次： 键顺序或空格的任何差异都会让签名失效。
 
 ---
 
@@ -81,7 +72,8 @@ body 只序列化**一次**，然后签它、发它——**同一份字节**。�
 
 | Header | 值 |
 | --- | --- |
-| `X-Fluxa-Event` | `payment.succeeded` / `payment.failed` / `payment.refunded` |
+| `X-Fluxa-Event` | 事件类型，见 §3.2 |
+| `X-Fluxa-Event-Id` | 与正文 `event_id` 相同；以验签后的正文值为准 |
 | `X-Fluxa-Timestamp` | Unix 秒 |
 | `X-Fluxa-Signature` | `hex(HMAC_SHA256(webhook_secret, "<timestamp>.<原始body>"))` |
 | `X-Fluxa-Encryption` | 仅在开启载荷加密时出现，值为 `A256GCM` |
@@ -95,13 +87,10 @@ reject unless constant_time_equals(expected, X-Fluxa-Signature)
 
 规则：
 
-- **必须用原始接收字节验签。** 反序列化再重新序列化会改变字节，签名就对不上。会自动解析
-  JSON 的框架（Express 的 `express.json()` 之类）会破坏这一点，除非你先拿到原始 body。
+- **必须用原始接收字节验签。** 反序列化再重新序列化会改变字节，签名就对不上。会自动解析 JSON 的框架（Express 的 `express.json()` 之类）会破坏这一点，除非你先拿到原始 body。
 - 必须用**常量时间**比较。
 - 校验 `X-Fluxa-Timestamp` 的新鲜度（±5 分钟是合理窗口）以限制重放。
-- 投递是 **at-least-once**——同一事件可能到达多次，必须幂等处理。
-  **幂等键用 `(event, order_id, refunded_amount)`，不要只用 `(event, order_id)`**——
-  后者不唯一，会丢掉部分退款，见 §3.1。
+- 投递是 **at-least-once**，按验签后的正文 `event_id` 去重，见 §3.1。
 - 失败会按指数退避重试（最多 8 次）。尽快返回 `2xx`；其他状态码都视为失败。
 
 ### 加密信封（开启载荷加密时）
@@ -141,6 +130,7 @@ AAD 为空。
 
 ```json
 {
+  "event_id": "whk_example_paid",
   "event": "payment.succeeded",
   "order_id": "ord_…",
   "merchant_order_id": "order-1",
@@ -149,56 +139,52 @@ AAD 为空。
   "status": "paid",
   "channel": "mock",
   "channel_name": "Mock (test)",
-  "is_test": false,
-  "refunded_amount": "0"
+  "is_test": true
 }
 ```
 
 | 字段 | 说明 |
 | --- | --- |
-| `event` | `payment.succeeded` / `payment.failed` / `payment.refunded` |
+| `event` | 事件类型，见 §3.2 |
+| `event_id` | 不透明事件 ID；重试不变、不同事件不同 |
 | `order_id` | fluxa 订单号 `ord_<ULID>` |
 | `merchant_order_id` | 你下单时传的幂等键 |
 | `amount` | **订单总额**——不是退款额 |
 | `currency` | 币种 |
-| `status` | `paid` / `failed` / `refunded` / **`partially_refunded`** |
+| `status` | `pending` / `paid` / `failed` / `refunded` / `partially_refunded` / `expired` / `canceled` |
 | `channel` | 渠道 code |
 | `channel_name` | 渠道展示名 |
 | `is_test` | **`true` = 测试订单，无真实资金，切勿发货**。测试密钥的订单照样推 webhook，供你联调 |
 | `refunded_amount` | **累计**已退总额；**仅在确有退款后出现**。见 §3.1 |
 
-金额一律是**十进制字符串**。绝不要解析成浮点——服务端存 `numeric(38,18)` 并用 decimal
-运算。把 `9.99` 解析成双精度不会当场看出问题——但最近的双精度值是 `9.99000000000000021…`，误差会累积：`9.99` 累加 100 次得到 `999.0000000000007` 而非 `999`。对账就会差出一分钱，而且谁也查不出来。
+金额一律是**十进制字符串**。绝不要解析成浮点——服务端存 `numeric(38,18)` 并用 decimal 运算。把 `9.99` 解析成双精度不会当场看出问题——但最近的双精度值是 `9.99000000000000021…`，误差会累积：`9.99` 累加 100 次得到 `999.0000000000007` 而非 `999`。对账就会差出一分钱，而且谁也查不出来。
 
-### 3.1 部分退款——最容易赔钱的地方
+### 3.1 事件标识与累计退款
 
-一笔订单可以被**多次部分退款**，每次都推送一个 `payment.refunded`。因此：
+使用验签、解密后正文里的非空字符串 `event_id` 作为唯一事件键。`X-Fluxa-Event-Id` 携带相同值方便追踪，但头不在签名内，不能只信头。重试和手工重投保留相同 ID；不同事件即使订单、类型、金额完全相同也有不同 ID。示例对缺失或格式错误的正文 ID 返回 400，不会悄悄回退到会丢事件的组合键。旧的 `(event, order_id, refunded_amount)` 已不是当前契约。
 
-> **`(event, order_id)` 不是唯一的。** 用它去重，第二笔部分退款会被当成「重复」丢弃、返回
-> `2xx`，fluxa 认为投递成功、永不重试。客户少退了钱，而整条链路没有任何报错。
+ID 不代表顺序。1000 的订单先退 30、再退 20，会收到不同 ID、累计 `refunded_amount` 分别为 `30.00` 和 `50.00` 的两个事件。按十进制运算推进到 `max(已记录, refunded_amount)`：累加会多记退款，直接赋值会让迟到的 `30.00` 覆盖 `50.00`。对账只应用正增量，不把订单 `amount` 当作退款额。事件去重和累计状态更新必须在同一数据库事务内。
 
-1000 的订单先退 30、再退 20，你会收到两个事件：
+### 3.2 当前事件与乱序处理
 
-| 第几次 | `amount`（订单总额） | `refunded_amount`（累计） | `status` |
-| --- | --- | --- | --- |
-| 第 1 次 | `1000.00` | `30.00` | `partially_refunded` |
-| 第 2 次 | `1000.00` | `50.00` | `partially_refunded` |
+| 事件 | 处理方式 |
+| --- | --- |
+| `payment.succeeded` | 精确金额订单只履约一次；`settle_on_received: true` 时按累计 `received_amount` 入账，不按报价 `amount` 入账。 |
+| `payment.additional_received` | 按实收结算订单的追加到账。事务中将累计入账毛额推进到 `max(已记录, received_amount)`，只应用正增量，不再另加 `deposit_amount`。它可能先于 `payment.succeeded` 到达。 |
+| `payment.failed` | 核对订单失败状态；迟到事件不可覆盖较新的已支付或已退款状态。 |
+| `payment.refunded` | 按十进制 max 推进累计 `refunded_amount`；`reason` 区分 `refund` 与 `dispute`。 |
+| `payment.pending` | 必须显式订阅。仅在订单仍待支付时展示 `payment_method`、`payment_expires_at`、`voucher`；不能据此发货。更新付款单会使用新的事件 ID。 |
+| `payment.dispute_created` / `payment.dispute_closed` | 必须显式订阅。按 `dispute_id` 保存 `is_inquiry`、`escalated`、`outcome`、`corrected`；关闭事件可能先到，改判为 `won` 可覆盖原有 `lost`。事件本身不代表资金变动，扣款通过 `payment.refunded` 报告。 |
+| `order.created` / `order.expired` / `order.canceled` | 必须显式订阅。记录创建；关闭后隐藏收银链接、嵌入式支付表单与收款地址。迟到的创建事件不可重新打开订单。 |
+| `settlement.completed` | 商户结算到账凭证，带 `settlement_tx`、`settlement_address`、`chain`、`asset`、`fee`，`amount` 是到账净额；不能再次给顾客入账或发货。 |
+| `subscription.charged` / `subscription.payment_failed` / `subscription.completed` | 更新订阅生命周期，不要重复支付事件已执行的履约。 |
 
-两条规则：
+空订阅列表包含普通支付、结算、订阅事件，但不包含上述需要显式订阅的事件。非空白名单必须列出所有需要的事件，按实收结算须包括 `payment.additional_received`。未知事件记录后应答，不执行履约；非支付事件可能没有订单字段。
 
-1. **幂等键带上 `refunded_amount`**：`(event, order_id, refunded_amount)`。这些值是累计的且
-   严格递增，所以该键能把「同一事件重投」（该字段相同 → 去重）和「新的一笔部分退款」
-   （递增 → 放行）区分开。数据库唯一索引也按这三列建。
-2. **把你侧的已退总额推进到 `max(已记录, refunded_amount)`。** 既不要累加，也不要直接赋值：
-   - **累加**：重投时会多退。
-   - **直接赋值**：乱序时会回退。at-least-once **不保证顺序**，同一订单的投递之间也不保证
-     串行——失败的投递会退避后重试，所以携带 `30` 的事件可能**晚于**携带 `50` 的到达。
-     迟到的 `30` 不是重复（键不同，会被正确处理），直接赋值就会把总额从 50 退回 30。
-   - **取 max**：既幂等（重投）又对乱序安全，所以这是唯一正确的做法。
+支付事件的可选字段包括 `paid_at`，按实收结算的 `settle_on_received`、`min_received_amount`、`received_amount`，追加到账的 `deposit_id`、`tx_hash`、`deposit_amount`，以及已结算正式订单的 `fee` / `net` 快照。快照不能累加，直清订单退款后 `net` 可能为负。退款会减少手续费或净额，不能对 `fee` / `net` 取 max；乱序对账时查询当前订单。
 
-   比较时按**十进制**比，不要用浮点，也不要用字符串——字典序下 `"9.90" > "10.00"` 为真。
+### 3.3 生产处理
 
-   另外不要用 `amount` 算退款：那会把「1000 的订单退了 1」读成「退了 1000」。
+接收器只打印业务动作，去重使用本地演示存储（PHP 使用文件标记），不是持久化账本。生产顺序为：验签 → 解密 → 校验 `event_id` → 开启数据库事务 → 插入事件唯一键并应用订单状态/累计金额增量 → 提交 → 返回 2xx。已提交的重复 ID 直接返回 2xx。失败时同时回滚事件标记和业务写入，返回失败以便重试；异步任务应先持久化事件再应答，不能先永久标记已处理再执行可能失败的业务。
 
-没有独立的投递 ID 头可用（fluxa 只发 `X-Fluxa-Event`、`X-Fluxa-Timestamp`、
-`X-Fluxa-Signature`、`X-Fluxa-Encryption`），所以上面的累计值语义是唯一正确的做法。
+所有真实资金变动或履约前检查 `is_test`。浏览器跳转成功页不代表付款成功，必须以验签事件或签名查询订单为准。事件 ID 是不透明字符串，不表达时间或顺序。

@@ -64,10 +64,10 @@ internal static class Charge
                 break;
             case "client_secret":
                 Console.WriteLine(
-                    $"\nPayer action: confirm client-side with the client_secret\n  {Fluxa.Field(instruction, "client_secret")}");
+                    $"\nPayer action: confirm client-side with the client_secret\n  {Fluxa.Field(instruction, "client_secret")}\n  Publishable key: {Fluxa.Field(instruction, "publishable_key")}");
                 break;
             case "none":
-                Console.WriteLine("\nThis channel needs no payer action.");
+                Console.WriteLine("\nNo payable instruction: check order.status; closed orders require a new merchant_order_id.");
                 break;
             default:
                 Console.WriteLine($"\nUnknown instruction.type={type}: {instruction}");
