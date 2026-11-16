@@ -108,3 +108,7 @@ brew install ruby
 - **Amounts are decimal strings, never floats.**
 
 Full details: [`../spec/SIGNING.md`](../spec/SIGNING.md).
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

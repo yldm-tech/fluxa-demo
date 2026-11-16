@@ -106,3 +106,7 @@ app.post("/fluxa/webhook", express.raw({ type: "*/*" }), (req, res) => {
 - **The canonical is 5 lines**, and with no query the third line is an empty line that must still be there — drop it and every request fails with `401 bad_signature`.
 
 Full details: [`../spec/SIGNING.md`](../spec/SIGNING.md).
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

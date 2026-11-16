@@ -18,6 +18,11 @@ pub struct Config {
     /// secret above.
     pub webhook_secret: String,
     pub channel: String,
+    pub network: String,
+    pub method: String,
+    pub presentation: String,
+    pub return_url: String,
+    pub cancel_url: String,
     pub currency: String,
     /// amount stays a decimal string — never parse it as f64.
     pub amount: String,
@@ -56,10 +61,7 @@ fn parse_env(text: &str) -> HashMap<String, String> {
 /// instead of `rust/../.env`.
 fn env_file_path() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest
-        .parent()
-        .unwrap_or(&manifest)
-        .join(".env")
+    manifest.parent().unwrap_or(&manifest).join(".env")
 }
 
 /// load reads the shared .env and merges it with the real process environment, which wins.
@@ -98,6 +100,11 @@ pub fn load() -> Result<Config, String> {
         secret: get("FLUXA_SECRET", ""),
         webhook_secret: get("FLUXA_WEBHOOK_SECRET", ""),
         channel: get("FLUXA_CHANNEL", "mock"),
+        network: get("FLUXA_NETWORK", ""),
+        method: get("FLUXA_METHOD", ""),
+        presentation: get("FLUXA_PRESENTATION", ""),
+        return_url: get("FLUXA_RETURN_URL", "https://example.com/pay/success"),
+        cancel_url: get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel"),
         currency: get("FLUXA_CURRENCY", "USD"),
         amount: get("FLUXA_AMOUNT", "9.99"),
         webhook_port,
@@ -124,5 +131,7 @@ fn require_value(key: &str, val: &str) -> Result<(), String> {
         return Ok(());
     }
     let shown = if val.is_empty() { "unset" } else { val };
-    Err(format!("{key} is not filled in yet in .env (current value: {shown})."))
+    Err(format!(
+        "{key} is not filled in yet in .env (current value: {shown})."
+    ))
 }

@@ -28,14 +28,17 @@ fn main() {
         amount: cfg.amount.clone(), // decimal string — never a float
         currency: cfg.currency.clone(),
         channel: cfg.channel.clone(),
+        network: cfg.network.clone(),
+        method: cfg.method.clone(),
+        presentation: cfg.presentation.clone(),
         subject: "fluxa demo item".to_string(),
         description: "Created by fluxa-demo/rust".to_string(),
         metadata: BTreeMap::from([
             ("source".to_string(), serde_json::json!("fluxa-demo")),
             ("lang".to_string(), serde_json::json!("rust")),
         ]),
-        return_url: "https://example.com/pay/success".to_string(),
-        cancel_url: "https://example.com/pay/cancel".to_string(),
+        return_url: cfg.return_url.clone(),
+        cancel_url: cfg.cancel_url.clone(),
         expires_in_seconds: 1800,
         ..Default::default()
     };

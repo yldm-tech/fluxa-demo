@@ -16,10 +16,16 @@ charge = {
   "subject" => "fluxa demo item",
   "description" => "Created by fluxa-demo/ruby",
   "metadata" => { "source" => "fluxa-demo", "lang" => "ruby" },
-  "return_url" => "https://example.com/pay/success",
-  "cancel_url" => "https://example.com/pay/cancel",
+  "return_url" => config.return_url,
+  "cancel_url" => config.cancel_url,
   "expires_in_seconds" => 1800
 }
+
+charge["network"] = config.network unless config.network.empty?
+
+charge["method"] = config.method unless config.method.empty?
+
+charge["presentation"] = config.presentation unless config.presentation.empty?
 
 puts "→ POST /api/v1/charges  (merchant_order_id=#{merchant_order_id})"
 res = Fluxa.create_charge(config, charge)

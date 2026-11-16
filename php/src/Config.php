@@ -37,6 +37,31 @@ final class Config
         return self::get('FLUXA_CHANNEL', 'mock');
     }
 
+    public static function network(): string
+    {
+        return self::get('FLUXA_NETWORK', '');
+    }
+
+    public static function method(): string
+    {
+        return self::get('FLUXA_METHOD', '');
+    }
+
+    public static function presentation(): string
+    {
+        return self::get('FLUXA_PRESENTATION', '');
+    }
+
+    public static function returnUrl(): string
+    {
+        return self::get('FLUXA_RETURN_URL', 'https://example.com/pay/success');
+    }
+
+    public static function cancelUrl(): string
+    {
+        return self::get('FLUXA_CANCEL_URL', 'https://example.com/pay/cancel');
+    }
+
     public static function currency(): string
     {
         return self::get('FLUXA_CURRENCY', 'USD');

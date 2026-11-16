@@ -110,3 +110,7 @@ Two more:
 - **Amounts are decimal strings, never floats.** Parsing `9.99` as a float does not visibly corrupt it — but the nearest double is `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. The server stores `numeric(38,18)` and uses decimal arithmetic. Use `Decimal` if you must compute.
 
 Full details: [`../spec/SIGNING.md`](../spec/SIGNING.md).
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

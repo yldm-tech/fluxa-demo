@@ -64,6 +64,11 @@ class _Config:
     def __init__(self):
         self.base_url = _get("FLUXA_BASE_URL", "http://localhost:8090").rstrip("/")
         self.channel = _get("FLUXA_CHANNEL", "mock")
+        self.network = _get("FLUXA_NETWORK", "")
+        self.method = _get("FLUXA_METHOD", "")
+        self.presentation = _get("FLUXA_PRESENTATION", "")
+        self.return_url = _get("FLUXA_RETURN_URL", "https://example.com/pay/success")
+        self.cancel_url = _get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel")
         self.currency = _get("FLUXA_CURRENCY", "USD")
         self.amount = _get("FLUXA_AMOUNT", "9.99")
         self.webhook_port = int(_get("WEBHOOK_PORT", "9000"))

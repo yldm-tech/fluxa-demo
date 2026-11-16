@@ -17,11 +17,14 @@ def main():
         "amount": config.amount,  # decimal string — never a float
         "currency": config.currency,
         "channel": config.channel,
+        **({"network": config.network} if config.network else {}),
+        **({"method": config.method} if config.method else {}),
+        **({"presentation": config.presentation} if config.presentation else {}),
         "subject": "fluxa demo item",
         "description": "Created by fluxa-demo/python",
         "metadata": {"source": "fluxa-demo", "lang": "python"},
-        "return_url": "https://example.com/pay/success",
-        "cancel_url": "https://example.com/pay/cancel",
+        "return_url": config.return_url,
+        "cancel_url": config.cancel_url,
         "expires_in_seconds": 1800,
     }
 

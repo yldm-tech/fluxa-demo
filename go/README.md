@@ -94,3 +94,7 @@ Three more:
 Go needs no special handling for the query sort: `sort.Strings` compares byte-wise, which is already the UTF-8 byte order the server uses. (This is the trap that bites JavaScript, Java, and C#, whose default comparators are UTF-16 or culture-sensitive.)
 
 Full details: [`../spec/SIGNING.md`](../spec/SIGNING.md).
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

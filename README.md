@@ -135,11 +135,17 @@ The basic hosted-checkout request remains compatible. Optional request fields ca
 
 On an idempotent replay, omitted settlement/presentation options reuse the original order; explicit conflicting values return `409 idempotency_mismatch`. A replay of an expired, canceled or failed order returns `instruction.type: none`; do not offer `payment.channel_ref` as a payable address. `409 order_closed_during_charge` or `stripe_account_changed_during_charge` requires a new `merchant_order_id`. An unpaid order can be canceled with signed `POST /api/v1/orders/{id}/cancel`. `GET /api/v1/orders/{id}` also exposes `checkout_url`, payment and settlements. API keys are mode-scoped: use the same Test/Live mode when reading or refunding an order.
 
+### Shared charge configuration
+
+All eight charge commands read `FLUXA_NETWORK`, `FLUXA_METHOD`, `FLUXA_PRESENTATION`, `FLUXA_RETURN_URL` and `FLUXA_CANCEL_URL` from the shared `.env` or process environment. Empty optional network/method/presentation values are omitted. For network routing, explicitly set `FLUXA_CHANNEL=`; the default `mock` channel otherwise takes precedence. For LianLian, select the account's channel code and enabled method, keep presentation empty, and configure your return URLs without changing source code.
+
+Subscriptions require Live keys and a supported live channel. On-chain channels are not supported for recurring billing. `subscription.charged` reports creation of a cycle order; only a verified payment-success event confirms payment. A signed `POST /api/v1/charges/fee-quote` is a read-only net-to-gross estimate with required `amount`, `currency`, `channel`, and integer `precision` (0–18); its `total` can be used as the charge amount, but the quote does not reserve the fee rate or include external wallet/network fees.
+
 ### LianLian / WeChat Pay
 
 An external merchant integrates with Fluxa using its own Fluxa API key and webhook secret, not the platform's LianLian RSA keys. First complete merchant onboarding and enable the appropriate fiat payment access. Call signed `GET /api/v1/channels` using that merchant's key and select the exact code returned for the enabled LianLian channel. A code such as `lianlian_wechat` is an operator configuration, not a universal constant; do not copy another merchant's configuration blindly.
 
-Set `FLUXA_CHANNEL` to that code, use matching Live credentials for a live channel, and choose a currency/amount supported by that configuration. Replace the example return/cancel URLs in the charge entrypoint with your own site. Keep `presentation` at its default redirect and leave `settle_on_received` absent. Redirect the payer to `instruction.redirect_url`, then confirm payment through the verified callback. Register your own public callback URL and webhook secret. Use `mock` with Test keys to verify the integration before a live payment; it does not exercise LianLian's real payment network.
+Set `FLUXA_CHANNEL` to that code, use matching Live credentials for a live channel, and choose a currency/amount supported by that configuration. Set `FLUXA_RETURN_URL` and `FLUXA_CANCEL_URL` to your own site. Keep `presentation` at its default redirect and leave `settle_on_received` absent. Redirect the payer to `instruction.redirect_url`, then confirm payment through the verified callback. Register your own public callback URL and webhook secret. Use `mock` with Test keys to verify the integration before a live payment; it does not exercise LianLian's real payment network.
 
 ### Troubleshooting
 

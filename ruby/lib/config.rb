@@ -38,6 +38,26 @@ module Fluxa
       get("FLUXA_CHANNEL", "mock")
     end
 
+    def network
+      get("FLUXA_NETWORK", "")
+    end
+
+    def method
+      get("FLUXA_METHOD", "")
+    end
+
+    def presentation
+      get("FLUXA_PRESENTATION", "")
+    end
+
+    def return_url
+      get("FLUXA_RETURN_URL", "https://example.com/pay/success")
+    end
+
+    def cancel_url
+      get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel")
+    end
+
     def currency
       get("FLUXA_CURRENCY", "USD")
     end

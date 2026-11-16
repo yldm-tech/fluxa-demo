@@ -21,10 +21,22 @@ $charge = [
     'subject' => 'fluxa demo item',
     'description' => 'Created by fluxa-demo/php',
     'metadata' => ['source' => 'fluxa-demo', 'lang' => 'php'],
-    'return_url' => 'https://example.com/pay/success',
-    'cancel_url' => 'https://example.com/pay/cancel',
+    'return_url' => Config::returnUrl(),
+    'cancel_url' => Config::cancelUrl(),
     'expires_in_seconds' => 1800,
 ];
+
+if (Config::network() !== '') {
+    $charge['network'] = Config::network();
+}
+
+if (Config::method() !== '') {
+    $charge['method'] = Config::method();
+}
+
+if (Config::presentation() !== '') {
+    $charge['presentation'] = Config::presentation();
+}
 
 $fluxa = new Fluxa(Config::baseUrl(), Config::keyId(), Config::secret());
 

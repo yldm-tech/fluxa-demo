@@ -25,14 +25,17 @@ public final class ChargeDemo {
     charge.put("amount", config.amount); // decimal string — never a float
     charge.put("currency", config.currency);
     charge.put("channel", config.channel);
+    if (!config.network.isEmpty()) charge.put("network", config.network);
+    if (!config.method.isEmpty()) charge.put("method", config.method);
+    if (!config.presentation.isEmpty()) charge.put("presentation", config.presentation);
     charge.put("subject", "fluxa demo item");
     charge.put("description", "Created by fluxa-demo/java");
     Map<String, Object> metadata = new LinkedHashMap<>(); // Map.of does not preserve order; key order must be stable
     metadata.put("source", "fluxa-demo");
     metadata.put("lang", "java");
     charge.put("metadata", metadata);
-    charge.put("return_url", "https://example.com/pay/success");
-    charge.put("cancel_url", "https://example.com/pay/cancel");
+    charge.put("return_url", config.returnUrl);
+    charge.put("cancel_url", config.cancelUrl);
     charge.put("expires_in_seconds", 1800);
 
     System.out.println("→ POST /api/v1/charges  (merchant_order_id=" + merchantOrderId + ")");
