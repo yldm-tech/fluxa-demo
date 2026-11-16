@@ -100,6 +100,11 @@ public sealed class Config
     public string Secret => Required("FLUXA_SECRET");
     public string WebhookSecret => Required("FLUXA_WEBHOOK_SECRET");
     public string Channel => Get("FLUXA_CHANNEL", "mock")!;
+    public string Network => Get("FLUXA_NETWORK", "")!;
+    public string Method => Get("FLUXA_METHOD", "")!;
+    public string Presentation => Get("FLUXA_PRESENTATION", "")!;
+    public string ReturnUrl => Get("FLUXA_RETURN_URL", "https://example.com/pay/success")!;
+    public string CancelUrl => Get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel")!;
     public string Currency => Get("FLUXA_CURRENCY", "USD")!;
     public string Amount => Get("FLUXA_AMOUNT", "9.99")!; // decimal string — never a float
     public int WebhookPort => int.TryParse(Get("WEBHOOK_PORT", "9000"), out var p) ? p : 9000;

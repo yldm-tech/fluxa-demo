@@ -150,3 +150,7 @@ The Java-specific ones:
 - **Serialize the body exactly once.** `Fluxa.request` calls `writeValueAsString` once, and those same bytes are both hashed and written to the wire. Re-serializing after signing can change key order or escaping and the signature dies. Build bodies with `LinkedHashMap` — `Map.of` does not preserve order.
 
 Amounts are always decimal strings (the server stores `numeric(38,18)` and uses decimal arithmetic). Never parse them into `double`/`float`. Doing so does not visibly corrupt `9.99` — it prints back as `9.99` — but the nearest double is really `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent nobody can find. Keep the string, or use `BigDecimal` if you must compute.
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

@@ -20,6 +20,11 @@ type Config struct {
 	// Secret above.
 	WebhookSecret string
 	Channel       string
+	Network       string
+	Method        string
+	Presentation  string
+	ReturnURL     string
+	CancelURL     string
 	Currency      string
 	// Amount stays a decimal string — never parse it into a float64.
 	Amount      string
@@ -112,6 +117,11 @@ func LoadConfig() (Config, error) {
 		Secret:        get("FLUXA_SECRET", ""),
 		WebhookSecret: get("FLUXA_WEBHOOK_SECRET", ""),
 		Channel:       get("FLUXA_CHANNEL", "mock"),
+		Network:       get("FLUXA_NETWORK", ""),
+		Method:        get("FLUXA_METHOD", ""),
+		Presentation:  get("FLUXA_PRESENTATION", ""),
+		ReturnURL:     get("FLUXA_RETURN_URL", "https://example.com/pay/success"),
+		CancelURL:     get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel"),
 		Currency:      get("FLUXA_CURRENCY", "USD"),
 		Amount:        get("FLUXA_AMOUNT", "9.99"),
 		WebhookPort:   port,

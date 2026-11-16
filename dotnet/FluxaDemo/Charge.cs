@@ -25,10 +25,16 @@ internal static class Charge
             ["subject"] = "fluxa demo item",
             ["description"] = "Created by fluxa-demo/dotnet",
             ["metadata"] = new Dictionary<string, string> { ["source"] = "fluxa-demo", ["lang"] = "dotnet" },
-            ["return_url"] = "https://example.com/pay/success",
-            ["cancel_url"] = "https://example.com/pay/cancel",
+            ["return_url"] = cfg.ReturnUrl,
+            ["cancel_url"] = cfg.CancelUrl,
             ["expires_in_seconds"] = 1800,
         };
+
+        if (cfg.Network.Length > 0) charge["network"] = cfg.Network;
+
+        if (cfg.Method.Length > 0) charge["method"] = cfg.Method;
+
+        if (cfg.Presentation.Length > 0) charge["presentation"] = cfg.Presentation;
 
         Console.WriteLine($"→ POST /api/v1/charges  (merchant_order_id={merchantOrderId})");
         var res = await Fluxa.CreateChargeAsync(cfg, charge);

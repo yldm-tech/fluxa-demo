@@ -14,6 +14,11 @@ public final class Config {
 
   public final String baseUrl;
   public final String channel;
+  public final String network;
+  public final String method;
+  public final String presentation;
+  public final String returnUrl;
+  public final String cancelUrl;
   public final String currency;
   public final String amount;
   public final int webhookPort;
@@ -24,6 +29,11 @@ public final class Config {
     this.fileEnv = fileEnv;
     this.baseUrl = get("FLUXA_BASE_URL", "http://localhost:8090").replaceAll("/+$", "");
     this.channel = get("FLUXA_CHANNEL", "mock");
+    this.network = get("FLUXA_NETWORK", "");
+    this.method = get("FLUXA_METHOD", "");
+    this.presentation = get("FLUXA_PRESENTATION", "");
+    this.returnUrl = get("FLUXA_RETURN_URL", "https://example.com/pay/success");
+    this.cancelUrl = get("FLUXA_CANCEL_URL", "https://example.com/pay/cancel");
     this.currency = get("FLUXA_CURRENCY", "USD");
     this.amount = get("FLUXA_AMOUNT", "9.99");
     this.webhookPort = parsePort(get("WEBHOOK_PORT", "9000"));

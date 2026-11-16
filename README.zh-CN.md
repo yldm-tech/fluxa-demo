@@ -139,7 +139,7 @@ npm run webhook
 
 外部商户使用自己的 Fluxa API Key 和 webhook secret 对接 Fluxa，无需平台的连连 RSA 密钥。先完成商户开户并开放相应法币收款权限，用该商户密钥签名调用 `GET /api/v1/channels`，选择返回的已启用连连渠道 code。`lianlian_wechat` 这类名称由运营配置，不是固定常量，不要照抄其他商户的配置。
 
-将 `FLUXA_CHANNEL` 设为该 code，正式渠道使用对应 Live 密钥，并选择渠道支持的币种和金额。把下单入口里的示例成功/取消跳转地址替换为自己的站点，保持默认跳转收银台，不传 `settle_on_received`。将付款人引导到 `instruction.redirect_url`，以验签回调确认支付。配置自己的公网回调地址与 webhook secret。先用 Test 密钥和 `mock` 验证集成；mock 不会验证连连的真实支付网络。
+将 `FLUXA_CHANNEL` 设为该 code，正式渠道使用对应 Live 密钥，并选择渠道支持的币种和金额。将 `FLUXA_RETURN_URL` 与 `FLUXA_CANCEL_URL` 设为自己的站点，保持默认跳转收银台，不传 `settle_on_received`。将付款人引导到 `instruction.redirect_url`，以验签回调确认支付。配置自己的公网回调地址与 webhook secret。先用 Test 密钥和 `mock` 验证集成；mock 不会验证连连的真实支付网络。
 
 ### 排障
 
@@ -176,3 +176,9 @@ node/ python/ go/ java/ php/ ruby/ rust/ dotnet/
 ## 授权
 
 [MIT](LICENSE)——这里的代码随便抄进你自己的项目。
+
+## 共享下单配置
+
+八种语言均支持 `FLUXA_NETWORK`、`FLUXA_METHOD`、`FLUXA_PRESENTATION`、`FLUXA_RETURN_URL` 与 `FLUXA_CANCEL_URL`。网络、方式、呈现选项为空时不发送。网络路由须显式设置 `FLUXA_CHANNEL=`,否则默认 mock 渠道优先。连连接入选择账号可用的渠道 code 和已开启的支付方式,保持默认跳转收银台即可。
+
+订阅仅支持 Live 密钥与合适的正式渠道,不支持链上周期扣款。`subscription.charged` 表示生成本期订单,不能用于确认付款。签名调用 `POST /api/v1/charges/fee-quote` 可从净额估算应收总额,必填 `amount`、`currency`、`channel`、整数 `precision`(0–18);返回 `total` 可用作建单金额,但不锁定费率,也不含外部钱包提币/网络费。

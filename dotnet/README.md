@@ -127,3 +127,7 @@ On a `payment.refunded`, advance your recorded refunded total to **`max(recorded
 - **Parse decimals with `CultureInfo.InvariantCulture`.** `decimal.Parse` is culture-sensitive: in a comma-decimal locale, `"9.90"` parses as `990`.
 
 Amounts are always decimal strings — never `double`/`float`. Doing so does not visibly corrupt `9.99` (it prints back as `9.99`), but the nearest double is really `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent nobody can find. Keep the string, or use `decimal` if you must compute.
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.

@@ -12,11 +12,14 @@ const charge = {
   amount: config.amount, // decimal string — never a float
   currency: config.currency,
   channel: config.channel,
+  ...(config.network ? { network: config.network } : {}),
+  ...(config.method ? { method: config.method } : {}),
+  ...(config.presentation ? { presentation: config.presentation } : {}),
   subject: "fluxa demo item",
   description: "Created by fluxa-demo/node",
   metadata: { source: "fluxa-demo", lang: "node" },
-  return_url: "https://example.com/pay/success",
-  cancel_url: "https://example.com/pay/cancel",
+  return_url: config.returnUrl,
+  cancel_url: config.cancelUrl,
   expires_in_seconds: 1800,
 };
 

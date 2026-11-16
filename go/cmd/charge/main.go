@@ -33,11 +33,14 @@ func main() {
 		Amount:           cfg.Amount, // decimal string — never a float
 		Currency:         cfg.Currency,
 		Channel:          cfg.Channel,
+		Network:          cfg.Network,
+		Method:           cfg.Method,
+		Presentation:     cfg.Presentation,
 		Subject:          "fluxa demo item",
 		Description:      "Created by fluxa-demo/go",
 		Metadata:         map[string]any{"source": "fluxa-demo", "lang": "go"},
-		ReturnURL:        "https://example.com/pay/success",
-		CancelURL:        "https://example.com/pay/cancel",
+		ReturnURL:        cfg.ReturnURL,
+		CancelURL:        cfg.CancelURL,
 		ExpiresInSeconds: 1800,
 	}
 

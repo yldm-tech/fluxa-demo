@@ -157,3 +157,7 @@ Three more:
 Query sorting needs no special handling here: `sort_unstable()` is already correct. Rust's `Ord for str` compares bytes, and Rust strings are always UTF-8, so a plain sort **is UTF-8 byte order** and matches the server without a custom comparator. That is Rust-specific luck — JS and Java default to UTF-16 order, C# to culture-sensitive order, and both have to work around it. `tests/vectors.rs`'s `query_sorts_by_utf8_byte_order_not_utf16` pins this with `k=￿&k=😀`.
 
 Amounts are always decimal strings (the server stores `numeric(38,18)` and uses decimal arithmetic). Never parse them as `f64`. Doing so does not visibly corrupt `9.99` — it prints back as `9.99` — but the nearest double is really `9.99000000000000021…`, and the error compounds: summing `9.99` a hundred times gives `999.0000000000007`, not `999`. Reconciliation then fails by a cent nobody can find. Keep the string, or use a decimal type (`rust_decimal`) if you must compute.
+
+## Charge configuration
+
+Set optional network, payment method, presentation and return URLs in the shared `.env`; no source edit is needed. See [shared charge configuration](../README.md#shared-charge-configuration) for field names, routing precedence and LianLian setup.
